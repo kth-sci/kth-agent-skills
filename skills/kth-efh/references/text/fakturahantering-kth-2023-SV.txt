@@ -1,0 +1,678 @@
+Fakturahantering på
+       KTH
+ En sammanställning över ansvar och
+  hantering i fakturasystemet EFH
+
+
+            EKONOMI - 2019
+Innehållsförteckning
+1     Ansvarsfördelning och befogenhet ......................................................................................................... 3
+    1.1       En fakturas väg till betalning ......................................................................................................... 3
+    1.2       Sakattestantens ansvar .................................................................................................................. 3
+    1.3       Ekonomiattestantens ansvar ......................................................................................................... 4
+    1.4       Beställningsreferens ....................................................................................................................... 4
+    1.5       Attest av faktura ............................................................................................................................. 4
+      1.5.1       Möjlig jävssituation .................................................................................................................... 5
+    1.6       Bilagor ............................................................................................................................................. 5
+      1.6.1       Förtäring ..................................................................................................................................... 5
+      1.6.2       Resor ........................................................................................................................................... 6
+      1.6.3       Konferens.................................................................................................................................... 6
+      1.6.4       Konsulttjänst .............................................................................................................................. 6
+      1.6.5       Eurocard ..................................................................................................................................... 6
+2     Systeminformation .................................................................................................................................. 7
+    2.1       Förutsättningar .............................................................................................................................. 7
+      2.1.1       Mejl ............................................................................................................................................. 7
+      2.1.2       Inloggning................................................................................................................................... 7
+    2.2       Sakattest i systemet ........................................................................................................................ 8
+      2.2.1       Olika handlingsalternativ för en sakattestant ........................................................................ 12
+    2.3       Ekonomiattest i systemet ............................................................................................................. 13
+      2.3.1       Olika handlingsalternativ för en ekonomisk attestant. .......................................................... 14
+    2.4       Bifoga bilaga ................................................................................................................................. 14
+    2.5       Öppna bilaga ................................................................................................................................. 15
+    2.6       Aktivera ersättare ......................................................................................................................... 16
+    2.7       Sök faktura .................................................................................................................................... 18
+    2.8       Kontaktuppgifter .......................................................................................................................... 23
+
+
+
+
+                                                                                                                                                              1 (23)
+Syfte och sammanfattning
+
+
+Syftet med det här dokumentet är att ge information kring fakturahantering och en fakturas väg till
+betalning på KTH. Dokumentet är indelat i två delar, ansvar och systeminformation. I första delen
+framgår ditt ansvar som sakattestant och ekonomisk attestant medan den andra delen behandlar
+praktiskt tillvägagångsätt i fakturasystemet, som benämns EFH.
+
+Sakattestant:
+
+    •   En sakattestant är KTH:s benämning på den som kan verifiera att ett inköp/beställning är
+        genomfört enligt KTH:s rutiner för inköp och upphandling, att fakturan stämmer överens med
+        det avtalade och att tjänsten/varan har levererats.
+
+    •   En sakattestant ska:
+         Kontrollera att fakturan är korrekt
+         Ange projekt som ska betala fakturan
+         Ange syfte med inköpet
+         Bilägga relevanta dokument
+         Hänvisa till relevanta avtal/diarienummer
+
+    •   Om fakturan är felaktig eller avviker från det avtalade ska sakattestanten kontakta leverantören
+        och be om en kreditfaktura samt en ny korrekt faktura.
+
+
+Ekonomisk attestant:
+
+    •   En ekonomisk attestant är ofta den som är budgetansvarig samt den som bär huvudansvaret
+        för betalning av fakturan.
+
+    •   En ekonomisk attestant ska:
+         Kontrollera att fakturan är korrekt
+         Kontrollera att sakattestanten angett rätt projekt som ska betala för fakturan
+         Godkänna fakturan för slutbetalning
+
+    •   Skolchef delegerar ansvar till ekonomisk attestant.
+
+Glöm inte att aktivera din ersättare om du är frånvarande och inte kan hantera dina inkommande
+fakturor.
+
+En attestant får inte godkänna en faktura från ett företag där det finns en personlig koppling eller
+samröre, då har ett jävsförhållande uppstått. Om en sådan situation uppstår, kontakta närmaste
+överordnad chef.
+
+
+
+
+                                                                                                       2 (23)
+1     Ansvarsfördelning och befogenhet
+
+Innan ett inköp/beställning genomförs på KTH så är det viktigt att den som har budgetansvar har gett
+inköparen/beställaren befogenhet att genomföra inköpet. Det är oftast denna inköpare som sedan är
+sakattestant och den som är budgetansvarig som är ekonomisk attestant i fakturaprocessen.
+
+1.1    En fakturas väg till betalning
+För att en faktura ska gå till betalning så måste den ”flöda” genom KTH:s elektroniska fakturasystem
+som benämns EFH. Den första personen som erhåller fakturan i attestflödet kallas sakattestant, det är
+denna person som verifierar att det beställda levererats och att allt stämmer med det avtalade.
+
+Fakturan hanteras därefter av en ekonom, ekonomen skriver text till bokföringen och väljer rätt konto
+som kostnaden ska bokföras på. Sista atteststeget i flödet är det ekonomiska, den ekonomiska
+attestanten är den som godkänner inköpet och att utbetalning från KTH ska ske. När fakturan blivit
+ekonomiskt attesterad synliggörs kostnaden på projektet samtidigt som fakturan kommer att ingå i
+betalningsfil till banken.
+
+
+
+
+Figur 1 Attestflöde av en faktura
+
+Räntelagen tillämpas på KTH. Den säger att förfallodag ska vara 30 dagar efter det att fakturan
+skickats, (räknas normalt från det datum fakturan upprättats). Vid överenskommelse om kortare
+kredittid ska den som är sakattestant ta ansvar för att fakturan betalas inom den överenskomna tiden.
+Villkor som tagits in i fakturan ensidigt av leverantören exempelvis faktureringsavgift är inte bindande
+för KTH. För att en faktura ska hinna betalas i tid så är det viktigt att alla inblandade i flödet hanterar
+fakturan skyndsamt.
+
+1.2    Sakattestantens ansvar
+En sakattestant är den person som ska verifiera att en beställning är korrekt. Genom att godkänna
+fakturan i systemet verifierar attestanten att fakturan överensstämmer med det avtalade/offererade
+och att KTH har erhållit det som beställts.
+
+Rollen som sakattestant är den första av fyra steg i fakturaflödet. Sakattestanten ansvarar för att köpet
+är genomfört enligt KTH:s rutiner för ”inköp och upphandling” och att fakturan stämmer överens med
+vad som är avtalat. Det är även sakattestantens ansvar att korrekta bilagor finns bifogade. Kontakta din
+närmaste chef för att bli godkänd sakattestant.
+
+För mer info kring inköp och upphandling, se https://intra.kth.se/administration/upphandling
+
+
+
+
+                                                                                                       3 (23)
+Figur 2 Attestflödet i EFH
+
+1.3       Ekonomiattestantens ansvar
+En ekonomisk attestant är ofta den person som har budgetansvaret och därmed den som kan besluta
+att inköpet får genomföras. Att ekonomiattestera innebär därmed ett godkännande att inköpet är
+genomfört korrekt och att KTH/projektet ska betala för inköpet. Befogenheten att ekonomiattestera
+styrs per organisationsenhet och skolchef/universitetsdirektör delegerar attesträtten inom sin
+organisation.
+
+
+1.4       Beställningsreferens
+Vid inköp/beställning ska du alltid ange en fakturareferens. På KTH har vi följande struktur:
+EXEMPEL KTHXXX. Där EXEMPEL ska ersättas med det användarnamn/KTHID som beställaren
+inom KTH har.
+
+KTH tar i första hand emot e-fakturor och vi finns synliga via PEPPOL´s nätverk. Om leverantören av
+någon anledning inte kan skicka e-faktura finns mer information kring faktureringsalternativ på vår
+hemsida.
+
+
+1.5       Attest av faktura
+När en faktura attesteras så innebär det att nedanstående punkter verifieras:
+
+      •    Varan/tjänsten har levererats och att det är rätt kvantitet samt att den är fullgod
+      •    Fakturakontroll är genomförd vilket innebär att betalningsvillkor, pris, belopp på fakturan
+           samt leveranstidpunkt stämmer med beställningen
+      •    Fakturan är kompletterad med fullständiga bilagor som styrker inköpet. T.ex. om fakturan
+           avser förtäring ska deltagarförteckning och förmånsbeskattningsblankett vara bifogad. För mer
+           information se separat stycke om bilagor. Blanketter finns att hämta i blankettarkivet
+      •    Vid konsulttjänster så ska diarienummer eller avtal finns bifogat som styrker att utbetalningen
+           är korrekt.
+
+
+
+
+                                                                                                         4 (23)
+1.5.1     Möjlig jävssituation
+Som attestant får du inte godkänna en faktura från en motpart som du på något sätt har en personlig
+koppling eller samröre med. Detsamma gäller om en faktura har koppling till någon närstående. Om
+något av fallen förekommer innebär det att du är jävig och fakturan ska vidarebefordras till närmast
+överordnad chef.
+
+Enligt Förvaltningslagen (SFS1986:233) uppstår jäv bland annat om:
+    • Saken angår personen själv/make/förälder/barn/syskon/annan närstående person - personen
+        själv eller någon närstående är ställföreträdare för den saken angår
+    • Det i övrigt finns någon om omständighet som är ägnad att rubba förtroendet för opartiskhet
+
+1.6     Bilagor
+Vissa fakturor måste kompletteras med underlag, i de fall då fakturan inte innehåller tillräckligt med
+uppgifter. Det är viktigt att all dokumentation i Agresso är korrekt och fullständig. Det är
+sakattestantens ansvar att fakturan har korrekta bilagor och all relevant information finns med. Om
+någon information saknas kommer en ekonom att skicka tillbaka fakturan till sakattestanten i EFH för
+komplettering.
+
+Följande typer av fakturor kräver särskilda underlag som bilagor:
+    • Förtäring
+    • Resor
+    • Konferens
+    • Konsulttjänster
+    • Eurocard
+
+1.6.1     Förtäring
+Till alla fakturor som avser förtäring, oavsett om det är intern/extern representation, konferens eller
+arbetsmåltid måste en deltagarförteckning bifogas där både syfte och alla deltagares namn framgår.
+KTH:s riktlinjer för representation finns här.
+
+Om det avser extern representation så ska även namnet på organisation/företag som gästen
+representerar framgå. Blankett för representation 1 finns att hämta i blankettarkivet. Personnummer
+behöver enbart anges om interna deltagare ska förmånsbeskattas, det är viktigt att all relevant
+information finns med, syfte, deltagarens namn, organisationstillhörighet och datum. Tänk på att inte
+ange känsliga personuppgifter som kan kopplas till enskild person på deltagarförteckningen, då det
+enligt GDPR inte får lagras i ekonomisystemet.
+
+Om inköpet avser fika eller lättare förtäring för interna deltagare och det är en identifierbar grupp
+behöver inte fullständig deltagarförteckning biläggas utan det räcker att skriva t.ex. ”fika vid
+månadsmöte hela EUA, 20180820” i kommentarsfältet.
+
+1.6.1.1    Förmånsbeskattning
+Grundregeln enligt Skatteverket är att fria måltider som inte är representation alltid ska
+förmånsbeskattas. Anledningen till detta är att måltider är privata levnadsomkostnader som anställda
+själva ska betala. När KTH betalar måltider vid arbetsmöten, eller planeringsmöten medför det
+förmånsbeskattning för fri kost för den anställde samt arbetsgivaravgift för KTH. Om den anställde inte
+
+
+
+1 Blankett för deltagarförteckning vid representation finns att hämta här:
+
+https://intra.kth.se/administration/blanketter/personal-lon-anstallning
+
+                                                                                                        5 (23)
+redovisar måltid med reseräkning som underlag ska blankett Representation/kostförmån 2 fyllas i och
+bifogas som bilaga till leverantörsfakturan. Kopia av blanketten ska lämnas/skickas av sakattestanten
+enligt skolspecifika rutiner för hantering i lönesystemet.
+
+1.6.2   Resor
+En resefaktura ska alltid kompletteras med ett tydligt syfte. Genom att ange syftet med resan så
+framgår det vad resan avser och därmed varför KTH ska betala för resan. Exempel på syfte kan vara
+studieresa, forskningsvistelse, möte i EU-projekt m.fl. Syftet ska anges i kommentarsfältet. Se mer
+information under systemavsnittet.
+
+1.6.3   Konferens
+Till fakturor som avser konferens (både extern- och internkonferens), ska alltid deltagarförteckning och
+program/dagordning med syfte bifogas.
+
+1.6.4   Konsulttjänst
+Till fakturor som avser inköp av konsulttjänst ska det tydligt framgå att fakturan stämmer med det
+överenskomna priset och uppdragets omfattning. Innebörden av konsultuppdraget ska också framgå.
+Sakattestanten ansvarar för att avtalet finns bilagt till fakturan eller att hänvisning till avtalets
+diarienummer finns angivet i kommentarsfältet.
+
+1.6.5   Eurocard
+Vid inköp med Eurocard ska alla kvitton biläggas till fakturan. Kvitton ska numreras så att posterna på
+fakturan tydligt kan kopplas till respektive kvitto, skanna sedan in och bilägg till fakturan. Alla
+originalkvitton ska sparas.
+
+Rutinen är följande för hantering av kvitton:
+    •   Tejpa fast originalkvitton på ett tomt A4-papper använd åldersbeständig tape, häfta inte.
+    •   Ta kopior på originalen och skanna in dessa till PDF-format.
+    •   Döp filen till bilaga till ”ver. 800XXXXX” och bifoga som bilaga till EFH-fakturan.
+    •   Lämna därefter originalkvittona till din ekonom på skolans ekonomiavdelning.
+
+Om ett kvitto saknas ska personen skriva en tydlig förklaring med namnunderskrift och närmaste chef
+ska skriftligen godkänna underlaget innan det skannas in.
+
+
+
+
+2 Blanketten för kostförmån finns att hämta här:
+
+https://intra.kth.se/administration/blanketter/personal-lon-anstallning
+
+                                                                                                    6 (23)
+2     Systeminformation
+
+En faktura attesteras i KTH:s elektroniska fakturahanteringssystem som benämns EFH. EFH fungerar
+bäst på din dator i en webbläsare 3 av nyare upplaga.
+
+2.1     Förutsättningar
+Webbläsaren ska vara inställd för att tillåta s.k. pop-up från kth.se-sidor. Storleken per bilaga kan vara
+upp till 5 MB. Användarnamn anges med UG\Ditt_anv_namn.
+
+Om du har glömt ditt KTH-lösenord, som är samma för t.ex. webbmailen kan du gå till
+https://login.kth.se/changePassword.jsp och byta lösenord. Om användaren inte använder sin @kth.se
+mejladress så ska en Forwardadress registreras på intranätet.
+
+2.1.1    Mejl
+När du som attestant har en faktura att hantera så kommer det ett mejl till din kth.se mejl. Det är
+viktigt att du ser till att du kan läsa dessa mejl.
+
+2.1.2    Inloggning
+När du får mejl om att du har fakturor att hantera klickar du på länken i mejlet för att fakturaportalen
+ska öppnas. Om du inte blir automatiskt inloggad måste du ange UG\ före ditt kth.se användarnamn,
+exempel UG\BRITTH, och ange lösenord. Om du har problem att logga in kan du behöva ändra ditt
+lösenord. Se mer under förutsättningar.
+
+
+
+
+Du kan också hitta EFH via kth.se under Tjänster, eller genom att söka på https://agresso.ug.kth.se
+
+
+
+
+3 Firefox eller Crome är enligt vår bedömning bäst för fakturahantering
+
+
+
+                                                                                                      7 (23)
+2.2   Sakattest i systemet
+När du har uppgifter att hantera i Agresso är uppgiftsikonen högt uppe till höger upplyst, den visar
+också antalet fakturor att attestera. Klicka på ikonen.
+
+
+
+
+I uppgiftlistan finns en faktura att ekonomiskt attestera och 19 att sakattestera. För att börja
+sakattestera, klicka på Sakattestera i uppgiftslistan, då öppnas bilden Attest leverantörsfaktura.
+
+
+
+
+                                                                                                       8 (23)
+Här listas de fakturor som ska hanteras (samma princip gäller för fakturor som ska attesteras
+ekonomiskt). Längst upp på sidan finns en rullista för att sortera fakturorna. Bredvid denna finns en
+pil, pilen minimerar/maximerar uppgiftslistan. I minimerat läge ges mer plats för övrig information
+och en mer lättöverskådlig bild. Om du har många fakturor, sortera på förfallodatum för att ta det
+äldsta först.
+
+
+
+
+                                                                                                   9 (23)
+Längst upp på sidan finns även en symbol med ett i, där framgår en kort instruktion om vad du
+förväntas göra i varje steg.
+
+
+
+
+Attestbilden kan delas upp i tre områden, fakturainformation (1), logg/kommentarsfält (2) och detaljer
+för attestanten (3). Nedan följer information om respektive område.
+
+1. Information leverantörsfaktura
+Här visas allmän information om fakturan. Leverantör, förfallodatum, valuta, totalbelopp och belopp
+att godkänna (nettobeloppet) dvs. totalbeloppet minus moms.
+
+Här ska du kontrollera att allt stämmer överens med det avtalade och levererade men även att
+fakturabilden stämmer överens med vad som är presenterat i området.
+
+2. Logg arbetsflöde
+Här visas tidigare kommentarer och här kan du skriva information till andra i flödet. Här ska
+sakattestanten ange syfte och vad inköpet avser, det är viktigt för att tydliggöra varför KTH ska betala
+fakturan. Om fakturan avser en resekostnad så ska utöver syfte även resmål och datum anges. Ett
+tydligt syfte och förklaring på vad inköpet avser underlättar för ekonomen att välja bokföringskonto.
+
+Den åtgärd i kommentarsfältet som är först i tidsordning, visar vem som läst in fakturafilerna, denna
+person har ingenting med attestflödet att göra.
+
+3. Detaljer leverantörsfaktura
+Den första symbolen i området visar fakturans arbetsflöde, om du klickar på denna så kan du se vem
+som har haft fakturan innan. Om fakturan delats på olika projekt eller bokföringskonton så finns flera
+rader, i de fallen skapas ett arbetsflöde per rad.
+
+Som sakattestant ska du ange projekt, under fältet Proj. Som ekonomisk attestant ska du kontrollera
+fakturan och att rätt projekt är valt.
+
+För att få mer information om fakturan så kan du klicka på fakturabilden. Det ser lite olika ut beroende
+på om fakturan inkommit i papper eller om den inkommit som e-faktura.
+
+
+                                                                                                    10 (23)
+Pappersfaktura
+Om inkommen faktura är en pappersfaktura kan du klicka direkt på fakturabilden för att kontrollera
+fakturan.
+
+
+
+
+Ett nytt fönster öppnas enligt nedan. Vid flersidiga fakturor kan du bläddra med pilarna här.
+
+
+
+
+Om du vill skriva ut alla sidor på denna faktura väljer du print preview och sedan print. Alla sidor
+inklusive verifikationsdetaljer och kontering skrivs då ut. Vill du inte skriva ut alla detaljer utan enbart
+själva fakturabilden zooma bara in på fakturabilden högerklicka och välj print. Är fakturan flersidig
+måste det göras för varje sida.
+
+
+Elektronisk faktura
+KTH tar emot elektroniska fakturor i html-format. Klicka på fakturabilden för att få upp den i ett nytt
+fönster. Vill du skriva ut fakturan med verifikationsdetaljer klicka på utskrift direkt innan du öppnat
+upp bilden, välj sedan print. För att enbart skriva ut fakturan välj först spara för att öppna upp
+fakturan i ett annat fönster, välj sedan print.
+
+
+
+
+                                                                                                       11 (23)
+2.2.1   Olika handlingsalternativ för en sakattestant
+Alternativ ett – Fakturan betalas av ett projekt
+Fyll i det projekt som ska betala fakturan. Använd tab-tangenten för att förflytta dig i
+konteringssträngen. Ange syfte och vad fakturan avser i kommenteras fältet. Om allt ser rätt ut efter
+kontrollerna klicka på sakattestera.
+
+Alternativ två – Fakturan betalas av minst två projekt
+Om du vill dela kostnaden mellan projekt, ange ett av projekten i avsedd ruta och skriv tydligt i
+kommentarsfältet (utöver syfte och vad fakturan avser) mellan vilka projekt fakturan ska delas och hur
+mycket som ska betalas av varje projekt. Ekonomen delar upp fakturan i steget efter.
+
+Alternativ tre – Fakturan är felaktig
+Det finns många olika anledningar till att en faktura kan vara felaktig. Det kan t.ex. vara så att beloppet
+inte överensstämmer med det avtalande eller att fakturan inte ska till dig. Beroende på felet så finns
+olika tillvägagångsätt.
+
+Om fakturan ska till en annan skola eller person, välj knappen felaktig faktura och skriv en kommentar
+i fältet som kommer upp. Fakturan flödar då till skolans fakturasamordnare/SLIPS som ser till att den
+flyttas till rätt skola/person.
+
+Om du är rätt mottagare men leverantören har gjort något fel, t.ex. att beloppet inte stämmer med det
+avtalade. Kontakta leverantören och be dem skicka en kreditfaktura och ställa ut en ny faktura med det
+korrekta beloppet. Välj sedan knappen parkera och skriv en kommentar, t.ex. ”inväntar kreditfaktura
+från leverantör”. När kreditfakturan kommer, ange vilken debetfaktura det avser i kommentarsfältet
+och attestera både debet- och kreditfakturan samtidigt. Dessa möts och ingen betalning kommer att
+ske.
+
+Alternativ fyra – Vidarebefordra
+Om du felaktigt fått fakturan som sakattestant, men du vet vem som ska sakattestera den klicka på
+vidarebefordra. Välj namn i rullistan på den som du vill vidarebefordra till och skriv en kommentar.
+Klicka på vidarebefordra igen. Observera att det endast går att vidarebefordra inom din skola, om
+fakturan ska till en annan skola, klicka på felaktig faktura och ange kommentar, enligt instruktionen
+ovan.
+
+Att vidarebefordra betyder att ytterligare en person ska hantera fakturan innan den kan flöda till nästa
+steg. Om du kan verifiera fakturan/inköpet och enbart vill informera någon så är det bättre att
+sakattestera och informera vid sidan av systemet än att använda funktionen vidarebefordra.
+
+Alternativ fem – Parkera
+Om du vill avvakta med fakturabetalningen av någon anledning, t.ex. invänta rätt leverans eller
+avvaktar kreditfaktura, välj funktionen parkera. Fakturan ligger då kvar i din uppgiftslista tills ny
+åtgärd väljs. Kommentar måste lämnas och detta underlättar både för dig själv och för skolans
+fakturasamordnare/SLIPS.
+
+
+
+
+                                                                                                        12 (23)
+2.3   Ekonomiattest i systemet
+När du har fakturor som väntar för ekonomisk attest gäller samma som för sakattest. Uppgiftsikonen
+högt uppe till höger är upplyst och visar antal fakturor som finns att hantera. Klicka på ikonen och välj
+ekonomisk attest för att öppna bilden Attest leverantörsfaktura.
+
+
+
+
+För information kring de olika delarna av vyn Attest leverantörsfaktura se information i avsnitt
+2.2 Sakattest i systemet.
+
+Som ekonomisk attestant så ska du kontrollera fakturan. Kontrollera att beloppet är korrekt och att
+sakattestanten har angett rätt projekt som ska betala fakturan. Observera att om fakturan avser
+resa/representation som du själv har deltagit i, eller ett inköp som du själv ska nyttja så ska du välja
+knappen Eskalera. Fakturan kommer då att skickas till den som är utsedd som din arbetsledare.
+
+                                                                                                      13 (23)
+2.3.1    Olika handlingsalternativ för en ekonomisk attestant.
+
+Alternativ ett - Fakturan är korrekt
+
+
+
+
+Om fakturan är riktig och kostnaden betalas av angiven organisationsenhet och projekt klickar du på
+knappen Ekonomisk attest. Fakturan blir då definitivbokförd och skickas till banken. Där ligger den på
+betalningsbevakning till angivet förfallodatum.
+
+Alternativ två - Eskalera
+Om fakturan avser resa/representation som du själv har deltagit i, eller inköp du själv ska nyttja
+(dator/mobiltelefon): välj Eskalera.
+
+
+
+
+Skriv kommentar, med anledningen till eskaleringen och klicka på Eskalera. Fakturan flödar till din
+fördefinierade arbetsledare för ekonomisk attest.
+
+Alternativ tre - Fakturan är felaktig
+Om fakturan har fel projekt eller är helt felaktig, t ex om den ska betalas av en annan skola på KTH.
+Välj knappen Åter ekonom och skriv en kommentar.
+
+Alternativ fyra - Parkera
+Om det finns oklarheter kring betalning av fakturan, t.ex. om du avvaktar en slutkontroll ska du
+parkera fakturan och utreda saken vidare. Välj knappen Parkera och skriv kommentar. Fakturan ligger
+då kvar i din uppgiftslista tills ny åtgärd görs.
+
+2.4     Bifoga bilaga
+Du kan bifoga underlag till en faktura både i samband med attest och i efterhand. Bilagor i PDF-format
+är att föredra då det är enklast att öppna dessa senare i flödet. Klicka på gemet högt upp till höger på
+skärmbilden.
+
+
+
+
+Ett nytt fönster till vänster om fakturan öppnas.
+
+
+
+                                                                                                     14 (23)
+Markera mappen bilagor och klicka på Lägg till ett dokument.
+
+
+
+
+Det är viktigt att rätt mapp är markerad, annars tar bilagan över fakturabilden. Om du skulle glömma
+att markera bilagemappen och addera över fakturabilden, så kommer systemet ändå flytta bilagan till
+bilagemappen inom 1 timme. Klicka på Lägg till befintligt dokument. Välj Överför och leta upp din
+sparade blankett/underlag som du vill bifoga. Klicka på Spara.
+
+När fakturan sakattesterats och flödat till ekonomsteget så är gemet markerat för att informera om att
+det finns bilagor till fakturan.
+
+2.5   Öppna bilaga
+Klicka på det markerade gemet. Är bilagan i PDF-format öppnas den direkt på skärmen. Är bilagan i
+annat format ser bilden ut enligt nedan. Om inte bilagan är synlig ändra dokument vy genom att klicka
+på någon av symbolerna
+
+
+
+
+För att öppna bilagan stå på raden för bilagor och välj skriv ut.
+
+
+
+
+Beroende på webbinställningar kommer dokumentet antingen sparas eller öppnas direkt i Word/Excel.
+
+                                                                                                  15 (23)
+2.6   Aktivera ersättare
+När du är frånvarande en längre tid och vet att du inte kommer att kunna hantera fakturor ska du
+aktivera ersättare. Ersättaren kommer få samma behörigheter som du, det är därför viktigt att
+informera ersättaren om dina befogenheter och förväntade fakturor som ska inkomma. När ersättaren
+är aktiverad kommer denna se samma saker som du, båda kommer också får mejl om att det finns
+fakturor att hantera. För att aktivera ersättare, gå till Meny och Din anställning, klicka på Aktivera
+ersättare. Nedanstående fönster öppnas då.
+
+
+
+
+Finns en ersättare inlagd i systemet syns det här. I annat fall kontakta skolans
+fakturasamordnare/SLIPS. I exemplet nedan finns en ersättare.
+
+
+
+
+                                                                                                  16 (23)
+För att aktivera gör följande tre steg.
+    1. Fyll i frånvarodatum från och till
+    2. Ändra också frånvarostatus till Jag är inte på kontoret just nu
+    3. Spara
+
+När din ersättare är aktiverad kommer nedanstående bild att vara synlig när du ska attestera fakturor,
+informationen visar att din ersättare också har tillgång att hantera dina fakturor.
+
+
+
+
+På samma vis får du information när du är ersättare för någon annan. Om du är ersättare för någon
+annan så framgår det även i konteringsraden.
+
+
+
+
+Inställningar vid behörigheter i flera skolor
+Vissa sakattestanter har behörighet i flera skolor, varje skola benämns företag. Om du har det och vill
+se hur många fakturor du har att hantera i respektive företag kan du under uppgifter välja Gruppera
+efter:
+
+
+
+
+                                                                                                   17 (23)
+Välj Företag så skapas en mapp per processteg och skola
+
+
+
+
+2.7   Sök faktura
+Välj Meny som du hittar längst upp till vänster på sidan och klicka på rapporter. Under Globala
+rapporter/Elektroniska fakturahantering/Frågemallar finns ett antal frågor som söker fram fakturor på
+olika sätt.
+
+
+
+
+                                                                                                18 (23)
+Logg arbetsflöde levfakt 1 – Egna och åtgärdade
+Klicka på Logg arbetsflöde levfakt 1- Egna och åtgärdade, i den här bilden kan du göra urval på en
+mängd parametrar, t ex period eller leverantörsnummer. Det egna användarnamnet är redan ifyllt.
+
+
+
+
+Gör eventuella urval på Status arbetsflöde, perioder eller leverantörsnummer, klicka Sök för att starta
+sökningen. Du får då upp en lista över alla fakturor du har åtgärdat.
+
+Klicka på aktuellt Ver.nr för att zooma ner till fakturabilden och Avslutad för att se arbetsflödet.
+
+
+
+
+                                                                                                       19 (23)
+Fakturabilden
+
+
+
+
+Arbetsflöde
+Håll markören över en händelse för att se detaljerad info om klockslag, projektnummer etc.
+
+
+
+
+                                                                                             20 (23)
+Logg arbetsflöde levfakt 2 – Åtgärdade åt andra
+I menyn finns frågemallen Logg arbetsflöde levfakt 2 – Åtgärdade åt andra, gör dina urval här och
+klicka på bläddra för att söka. Här listas fakturor där du varit ersättare för en annan attestansvarig.
+
+
+
+
+Fråga arbetsflöde levfakt - Generell
+I menyn finns också frågemallen Fråga arbetsflöde levfakt – Generell, där du kan söka på fakturor
+oavsett om du själv hanterat dem, varit ersättare, haft ersättare eller inget av det. Du kan, som tidigare,
+göra urval på en mängd parametrar exempelvis verifikationsnummer eller projekt. Rapporten kan visa
+både urval på fakturor som befinner sig i EFH flödet och fakturor som flödat klart, urval görs i Aktiv
+och Hist.
+
+
+
+
+Om fakturan finns i flödet kan du se hos vem och i vilket steg den befinner sig. Har fakturaraden flödat
+klart är den kodad avslutad. För att se fakturabilden, klicka på Ver.nr.
+
+
+
+
+                                                                                                      21 (23)
+Fråga webbfakturor – Kontobrytn.
+I den här frågan får du en överblick över de fakturor som betalats av en organisationsenhet eller ett
+projekt, observera att det enbart är de kostnader som genererats av en faktura som visas. Andra
+kostnader eller kostnader som har omförts från ett annat projekt framgår inte av rapporten.
+
+Du kan göra urval bl.a. på period, org.enhet och/eller projekt. Urvalet söker på fakturor som hunnit bli
+bokförda, d.v.s. de som flödat klart. För att inkludera fakturor som fortfarande finns i flödet bocka för,
+A Ej bokförda poster.
+
+
+
+
+Resultatet visar fakturakostnaderna per konto. Om du vill se fakturan som genererat kostnaden, klicka
+på pluset för att utveckla listan och se verifikationerna. Klicka sedan på verifikationsnumret för att se
+fakturan.
+
+
+
+
+                                                                                                     22 (23)
+2.8   Kontaktuppgifter
+
+För att komma i kontakt med SLIPS/fakturasamordnare på KTH:s skolor använd följande funktionsmejladresser:
+
+ABE-skolan – ekonomi@abe.kth.se
+
+CBH-skolan – faktura@cbh.kth.se
+
+EECS-skolan – invoice@eecs.kth.se
+
+ITM-skolan - ekonomistab@itm.kth.se
+
+SCI-skolan – akvariet@kth.se
+
+VS – fakturaservice@kth.se
+
+
+
+
+                                                                                                     23 (23)
+

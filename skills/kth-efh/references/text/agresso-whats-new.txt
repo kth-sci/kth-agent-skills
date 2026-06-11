@@ -1,0 +1,49 @@
+One page about: What’s new in Agresso?
+
+
+Unit4 owns Agresso and now they have rebranded Agresso to Business World On! (BWO).
+We will probably continue to call the system Agresso for a long time…
+Electronic invoices are now converted/presented in the new European standard Peppol.
+The invoices will therefore look a little bit different.
+
+
+Now you find your new tasks in the top right corner:
+
+
+
+
+                                                                             If there is an attachment
+                                                                             this icon turns blue:
+
+
+
+
+Choices, when viewing an invoice, has now moved down to the bottom and all the icons are gone.
+
+          Old Agresso:
+
+
+“Sakattestant”
+
+“Ekonomiskt attestant”
+
+          New Agresso:
+
+“Sakattestant”
+
+
+“Ekonomiskt attestant”
+
+
+Handling attachments/documents
+
+Add a new document: Click       and then click                          (Add document) in the bottom left corner.
+Put the document in the folder “Bilagor”.
+
+View attached documents: click         Change view by switching between A,
+B and C. In A (full view) you can view pdf-files directly in the browser.
+To view doc/xls-files. Change view to B or C. Right click on line/file and
+choose “Skriv ut” (Print). Depending on browser settings the document will
+now be saved or opened directly in Word/Excel.
+(D presents same options as right click menu for marked document.)
+

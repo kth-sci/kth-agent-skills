@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+"""kth-findity-upload — batch-upload receipt PDFs to KTH-Expense (Findity).
+
+Uses the 3-step API sequence discovered 2026-05-26:
+  1. POST /api/v1/expense/content  (raw PDF)  → contentId
+  2. PUT  /api/v1/expense/content/{id}?action=scan  → OCR scanResult
+  3. POST /api/v1/expense/expenses  (JSON with scan data)  → DRAFT expense
+
+Reads receipts from a manifest (files.json from the hypha static service
+or a local file). Each receipt becomes a DRAFT expense attached to the
+named report. The agent NEVER submits the report — that stays with the user.
+
+Usage:
+  kth-findity-upload --manifest <url-or-path> --bearer <token> [options]
+  kth-findity-upload --manifest https://static-kth-submission-*.svc.hypha.aicell.io/files.json \\
+                     --bearer $(cat ~/.config/chrome-agent/.findity-bearer.txt)
+
+Options:
+  --report-id ID     Target report (default: first DRAFT report found)
+  --org-id ID        Findity organization ID (required; get from `kth findity organizations`)
+  --project VAL      Project number custom-field value (e.g. '89256')
+  --unit VAL         Unit/dept code custom-field value (e.g. 'SKE')
+  --account-code VAL Account code custom-field value (e.g. '662')
+  --delay SECS       Delay between uploads (default: 3, to avoid rate limiting)
+  --dry-run          Show what would be uploaded without doing it
+  --skip-existing    Skip receipts whose date already exists in the report (default: on)
+"""
+import argparse, json, os, sys, time, urllib.request, urllib.error
+
+BASE = "https://hogia.findity.com"
+
+TEMPLATES = {
+    "Matomo":      "Matomo website analytics subscription ({date}) — used to monitor research-website traffic for AICell Lab AI agent research.",
+    "Anthropic":   "Anthropic Claude API/Max-plan subscription ({date}) — used for AI agent research and development at AICell Lab.",
+    "OpenAI":      "OpenAI ChatGPT Plus / API usage credit ({date}) — used for LLM-powered AI agent experiments at AICell Lab.",
+    "Slack":       "Slack Pro plan for AICell Lab workspace ({date}) — used for research-team collaboration on AI agent development.",
+    "Cloudflare":  "Cloudflare hosting/security service ({date}) — used for AICell Lab research-project websites.",
+    "GoogleCloud": "Google Cloud Platform usage ({date}) — used for AI agent infrastructure and experiments at AICell Lab.",
+    "Gandi":       "Domain renewal ({date}) — AICell Lab research-project domain.",
+}
+
+def build_custom_fields(args):
+    """Build the customFields list from CLI flags. Only includes fields that are set."""
+    fields = []
+    if args.project:
+        fields.append({"fieldDefinitionId": args.project_field_id, "value": args.project})
+    if args.unit:
+        fields.append({"fieldDefinitionId": args.unit_field_id, "value": args.unit})
+    if args.account_code:
+        fields.append({"fieldDefinitionId": args.account_field_id, "value": args.account_code})
+    return fields
+
+
+def api(method, path, bearer, body=None, content_type="application/json"):
+    headers = {"Authorization": f"Bearer {bearer}", "Accept": "application/json"}
+    data = None
+    if body is not None:
+        if isinstance(body, (bytes, bytearray)):
+            data = body
+        elif isinstance(body, str):
+            data = body.encode("utf-8")
+        else:
+            data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = content_type
+    req = urllib.request.Request(BASE + path, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req) as r:
+            return r.status, json.loads(r.read().decode("utf-8") or "null")
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read().decode("utf-8") or "null")
+
+
+def load_manifest(source):
+    if source.startswith("http"):
+        return json.loads(urllib.request.urlopen(source).read())
+    return json.load(open(source))
+
+
+def fetch_pdf(url):
+    return urllib.request.urlopen(url).read()
+
+
+def get_existing_dates(bearer, org_id):
+    dates = set()
+    _, d = api("GET", f"/api/v1/expense/expensereports?organizationId={org_id}&max=10&include=expenseRecords", bearer)
+    for rep in (d or {}).get("data", []):
+        for e in rep.get("expenseRecords", []):
+            dates.add((e.get("expenseDate") or "")[:10])
+    return dates
+
+
+def find_report(bearer, org_id):
+    _, d = api("GET", f"/api/v1/expense/expensereports?organizationId={org_id}&max=10&processStatus=DRAFT", bearer)
+    for rep in (d or {}).get("data", []):
+        return rep["id"], rep.get("name", "")
+    return None, None
+
+
+def upload_one(receipt, bearer, org_id, report_id, custom_fields, dry_run=False):
+    vendor = receipt["vendor"]
+    date_str = receipt["date"]
+
+    # Pick best PDF (prefer invoice > receipt > email render)
+    pdf_file = None
+    for kind in ("invoice", "receipt", "email_render"):
+        pdf_file = next((f for f in receipt["files"] if f.get("kind") == kind), None)
+        if pdf_file:
+            break
+    if not pdf_file:
+        pdf_file = receipt["files"][0] if receipt["files"] else None
+    if not pdf_file:
+        return False, "no file"
+
+    # Human-readable date for description
+    from datetime import datetime
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        date_human = dt.strftime("%B %Y")
+    except Exception:
+        date_human = date_str
+
+    desc = TEMPLATES.get(vendor, "{vendor} ({date}) — for AICell Lab research at KTH.").format(
+        date=date_human, vendor=vendor)
+
+    if dry_run:
+        return True, f"[dry-run] {vendor} {date_str}: {desc[:60]}…"
+
+    # Step 1: upload PDF
+    try:
+        pdf_bytes = fetch_pdf(pdf_file["url"])
+    except Exception as e:
+        return False, f"fetch PDF: {e}"
+
+    status, content = api("POST", f"/api/v1/expense/content?organizationId={org_id}",
+                          bearer, body=pdf_bytes, content_type="application/pdf")
+    if status != 201:
+        return False, f"upload content: HTTP {status}"
+    content_id = content["id"]
+
+    # Step 2: OCR scan
+    status, scan = api("PUT", f"/api/v1/expense/content/{content_id}?action=scan&organizationId={org_id}", bearer)
+    sr = (scan or {}).get("scanResult", {})
+
+    # Step 3: create expense
+    expense_body = {
+        "organizationId": org_id,
+        "expenseReportId": report_id,
+        "categoryId": sr.get("categoryIds", ["3399ebe6bed14e4491a901e3c6f77cf7"])[0],
+        "verification": {
+            "type": "ReceiptVerification",
+            "amount": sr.get("amount", 0),
+            "taxAmount": sr.get("taxAmount", 0),
+            "currency": sr.get("currency", "SEK"),
+            "exchangeRate": 1.0,
+            "description": desc,
+            "purchaseDate": (sr.get("purchaseDate") or date_str) + "T12:00:00Z",
+            "receiptAttachment": {"id": content_id},
+            "customFields": custom_fields,
+        },
+        "reimbursementCurrency": "SEK",
+    }
+
+    status, result = api("POST", "/api/v1/expense/expenses", bearer, body=expense_body)
+    if status == 201:
+        return True, f"{vendor} {date_str} → {sr.get('amount', '?')} {sr.get('currency', '?')}"
+    else:
+        detail = (result or {}).get("description", str(result))[:80]
+        return False, f"create expense: HTTP {status} — {detail}"
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--manifest", required=True, help="URL or local path to files.json manifest")
+    ap.add_argument("--bearer", required=True, help="Findity bearer token (128-char opaque string)")
+    ap.add_argument("--report-id", default=None, help="Target report ID (default: first DRAFT report)")
+    ap.add_argument("--org-id", required=True, help="Findity organization ID (get from `kth findity organizations`)")
+    ap.add_argument("--project", default=None, help="Project number custom-field value (e.g. '89256')")
+    ap.add_argument("--project-field-id", default="3b51138dcfa54fe590767611513081cc",
+                     help="Field-definition ID for project number")
+    ap.add_argument("--unit", default=None, help="Unit/dept code custom-field value (e.g. 'SKE')")
+    ap.add_argument("--unit-field-id", default="4ba9eade2e884fff95988938dffd6839",
+                     help="Field-definition ID for unit/dept code")
+    ap.add_argument("--account-code", default=None, help="Account code custom-field value (e.g. '662')")
+    ap.add_argument("--account-field-id", default="a37dc604fcf34714872f220cbf38258f",
+                     help="Field-definition ID for account code")
+    ap.add_argument("--delay", type=float, default=3.0, help="Seconds between uploads (default: 3)")
+    ap.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args()
+
+    manifest = load_manifest(args.manifest)
+    receipts = manifest["receipts"]
+    print(f"  manifest: {len(receipts)} receipts")
+
+    report_id = args.report_id
+    if not report_id:
+        report_id, report_name = find_report(args.bearer, args.org_id)
+        if not report_id:
+            print("  ✗ no DRAFT report found. Create one in the Findity SPA first.", file=sys.stderr)
+            sys.exit(2)
+        print(f"  report: {report_name} ({report_id})")
+
+    custom_fields = build_custom_fields(args)
+
+    existing = get_existing_dates(args.bearer, args.org_id)
+    print(f"  existing dates in report: {len(existing)}")
+    if args.dry_run:
+        print("  ── DRY RUN ──")
+
+    ok = skip = fail = 0
+    for i, receipt in enumerate(receipts, 1):
+        if receipt["date"] in existing:
+            skip += 1
+            continue
+
+        success, msg = upload_one(receipt, args.bearer, args.org_id, report_id, custom_fields, dry_run=args.dry_run)
+        tag = f"[{i}/{len(receipts)}]"
+        if success:
+            ok += 1
+            print(f"  ✓ {tag} {msg}")
+            existing.add(receipt["date"])
+        else:
+            fail += 1
+            print(f"  ✗ {tag} {msg}", file=sys.stderr)
+
+        if not args.dry_run and i < len(receipts):
+            time.sleep(args.delay)
+
+    print()
+    print(f"  done: {ok} uploaded, {skip} skipped, {fail} failed")
+
+
+if __name__ == "__main__":
+    main()

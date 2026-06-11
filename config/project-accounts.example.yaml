@@ -1,0 +1,62 @@
+# Project-account routing template for `kth efh summary`.
+#
+# Copy this file to ~/.config/kth-cli/project-accounts.yaml and edit it
+# to match the projects you can charge invoices to. When `kth efh
+# summary` parses an invoice, it scans the supplier name + line-item
+# descriptions for any of the `keywords` listed below; the first rule
+# whose keywords match becomes the proposed Proj. If nothing matches,
+# the `default` entry is used.
+#
+# All identifying details (project numbers, cost centres, your name)
+# belong here — NOT in the repo. The repo's example uses placeholders.
+
+version: 1
+owner: "<YOUR NAME (KTHID)>"
+last_updated: "2026-01-01"
+
+# Rules are evaluated in array order; first match wins.
+rules:
+
+  # Example 1 — an EU grant
+  - id: example-eu-grant
+    when: "Invoice is for the EU example-grant project (grant ABC-12345)."
+    project: "<PROJECT_NUMBER>"     # e.g. 88314
+    cost_centre: "<COST_CENTRE>"    # e.g. SKEG
+    label: "EU example-grant"
+    grant_window: "YYMM-YYMM"
+    keywords: [example-grant, "ABC-12345"]
+
+  # Example 2 — a national project with a distinctive title
+  - id: example-national-project
+    when: |
+      Invoice belongs to the "<project title>" national project.
+    project: "<PROJECT_NUMBER>"
+    cost_centre: "<COST_CENTRE>"
+    label: "<short label>"
+    keywords: ["project title", "alias", "keyword"]
+
+  # Example 3 — a generic category (hardware, AI subscriptions, etc.)
+  - id: example-hardware
+    when: "Invoice is for lab hardware / electronics from any supplier."
+    project: "<PROJECT_NUMBER>"
+    cost_centre: "<COST_CENTRE>"
+    label: "Lab hardware"
+    keywords: [hardware, electronics, microscope, "lab supplies"]
+
+# Used when none of the rules above match. ALWAYS keep this present.
+default:
+  id: default-account
+  project: "<PROJECT_NUMBER>"
+  cost_centre: "<COST_CENTRE>"
+  label: "<your default account label>"
+  rationale: "Generic fallback when no rule matched."
+
+# Notes
+# -----
+# When the agent fills the Logg arbetsflöde comment on an EFH invoice,
+# it briefly states (a) what the invoice is, (b) why it belongs to the
+# selected project, (c) any reference like a quote or order number.
+#
+# Example agent-written comments:
+#   "Optical components for confocal upgrade (rule: example-hardware)."
+#   "Quarterly cloud bill, order Q-2026-04 (rule: example-eu-grant)."

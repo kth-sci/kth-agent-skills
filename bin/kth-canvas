@@ -1,0 +1,495 @@
+#!/usr/bin/env bash
+# kth-canvas — query the KTH Canvas LMS REST API and dump course content.
+#
+# Backend: https://canvas.kth.se/api/v1  (Instructure Canvas LMS).
+#
+# Authentication: a personal Canvas access token (Bearer). Canvas tokens
+# are NOT SAML cookies — they are long-lived API keys minted from the
+# user's profile page:
+#
+#     https://canvas.kth.se/profile/settings
+#       → "Approved Integrations" → "+ New Access Token"
+#       → set a Purpose, leave the expiry blank (or pick a date), Generate.
+#
+# The token string is shown EXACTLY ONCE, in the confirmation dialog. The
+# Chrome extension (claude-in-chrome MCP) can read it straight out of the
+# DOM right after the user clicks "Generate Token" — see
+# skills/kth-canvas/SKILL.md for the capture recipe. Store it at
+# $KTH_CANVAS_TOKEN_FILE (default ~/.config/kth-cli/.canvas-token, 0600)
+# or export KTH_CANVAS_TOKEN in ~/.config/kth-cli/secrets.env.
+#
+# Once a token exists, every read verb is pure curl — cron-friendly. The
+# `dump` verb walks an entire course (syllabus, pages, modules, assignments,
+# announcements, files) and writes a tree of Markdown files locally.
+set -euo pipefail
+
+# Resolve repo root via symlink-aware path walk (matches bin/kth, bin/kth-efh).
+__src="${BASH_SOURCE[0]}"
+while [ -L "$__src" ]; do
+  __target="$(readlink "$__src")"
+  case "$__target" in
+    /*) __src="$__target" ;;
+    *)  __src="$(cd "$(dirname "$__src")" && pwd)/$__target" ;;
+  esac
+done
+REPO_DIR="$(cd "$(dirname "$__src")/.." && pwd)"
+
+# Source user preferences + secrets if present.
+for f in "$HOME/.config/kth-cli/config.env" "$HOME/.config/kth-cli/secrets.env"; do
+  # shellcheck disable=SC1090,SC1091
+  [ -f "$f" ] && . "$f"
+done
+
+BASE="${KTH_CANVAS_BASE:-https://canvas.kth.se/api/v1}"
+TOKEN_FILE="${KTH_CANVAS_TOKEN_FILE:-$HOME/.config/kth-cli/.canvas-token}"
+
+usage() {
+  cat <<'EOF'
+Usage: kth canvas <command> [args...]
+
+Auth:
+  token                       Print the stored token (for ad-hoc curl).
+  token --set <TOKEN>         Save a token to ~/.config/kth-cli/.canvas-token.
+  whoami                      GET /users/self — confirm which account the
+                              token authenticates as. Use this to verify auth.
+
+Read (pure curl, paginated, cron-friendly):
+  courses [--all]             List your courses (active by default; --all = every state).
+  course <id>                 Course metadata (GET /courses/:id).
+  modules <id>                Modules + their items (GET /courses/:id/modules).
+  pages <id>                  Wiki page index (GET /courses/:id/pages).
+  page <id> <page-url>        One wiki page incl. HTML body.
+  assignments <id>            Assignments (GET /courses/:id/assignments).
+  announcements <id>          Announcements (discussion topics, only_announcements).
+  files <id>                  File listing with download URLs.
+  syllabus <id>               Course syllabus_body (HTML).
+  raw <path> [--paginate]     Passthrough, e.g. raw '/courses/63758/quizzes'.
+
+Export:
+  dump <id> [--out DIR]       Walk the whole course and write a tree of
+                              Markdown files (default ./canvas-dump/course-<id>/).
+                              Pulls: course meta, syllabus, front page, all
+                              wiki pages, modules+items, assignments,
+                              announcements, and a files manifest.
+
+  help, -h, --help            Show this help.
+
+Token (must exist before any verb except `token --set` / `help`):
+  Stored at $KTH_CANVAS_TOKEN_FILE
+  or exported as KTH_CANVAS_TOKEN in ~/.config/kth-cli/secrets.env.
+  Mint one at https://canvas.kth.se/profile/settings — see
+  skills/kth-canvas/SKILL.md for the Chrome-extension capture recipe.
+
+Architecture: read = pure curl (this CLI). Anything that mutates Canvas
+state (posting grades, submitting, deleting) stays in the browser with the
+user clicking the final button — per the irreversible-writes principle.
+EOF
+}
+
+# ── token resolution ────────────────────────────────────────────────
+resolve_token() {
+  if [ -n "${KTH_CANVAS_TOKEN:-}" ]; then
+    printf '%s' "$KTH_CANVAS_TOKEN"
+    return 0
+  fi
+  if [ -f "$TOKEN_FILE" ]; then
+    tr -d ' \t\r\n' < "$TOKEN_FILE"
+    return 0
+  fi
+  return 1
+}
+
+require_token() {
+  if TOKEN="$(resolve_token)" && [ -n "$TOKEN" ]; then
+    return 0
+  fi
+  cat >&2 <<NOTOK
+[kth-canvas] No Canvas access token found.
+
+Set one of:
+  • export KTH_CANVAS_TOKEN=...   in ~/.config/kth-cli/secrets.env
+  • write the token to            $TOKEN_FILE   (mode 0600)
+    e.g.  kth canvas token --set <TOKEN>
+
+Mint a token at: https://canvas.kth.se/profile/settings
+  → Approved Integrations → "+ New Access Token" → Generate.
+The token is shown ONCE. The Claude Chrome extension can read it from the
+confirmation dialog automatically — see skills/kth-canvas/SKILL.md.
+NOTOK
+  exit 1
+}
+
+set_token() {
+  local tok="${1:-}"
+  [ -n "$tok" ] || { echo "kth canvas token --set: missing <TOKEN>" >&2; exit 2; }
+  mkdir -p "$(dirname "$TOKEN_FILE")"
+  printf '%s' "$tok" > "$TOKEN_FILE"
+  chmod 600 "$TOKEN_FILE"
+  echo "[kth-canvas] Saved token to $TOKEN_FILE (mode 0600)."
+}
+
+# ── HTTP helpers ────────────────────────────────────────────────────
+# api <path-or-url> — single GET, returns JSON body. Path may be absolute
+# ("/courses/1") or a full URL (used when following pagination links).
+api() {
+  require_token
+  local path="$1" url
+  case "$path" in
+    http*) url="$path" ;;
+    /*)    url="$BASE$path" ;;
+    *)     url="$BASE/$path" ;;
+  esac
+  local http
+  http=$(curl -s -o "/tmp/kth-canvas-body.$$" -w '%{http_code}' \
+    -H "Authorization: Bearer $TOKEN" \
+    -H 'Accept: application/json' \
+    "$url")
+  local body; body="$(cat "/tmp/kth-canvas-body.$$" 2>/dev/null || true)"
+  rm -f "/tmp/kth-canvas-body.$$"
+  if [ "$http" -ge 400 ]; then
+    echo "[kth-canvas] HTTP $http on $url" >&2
+    if [ "$http" = 401 ]; then
+      echo "[kth-canvas] Token invalid/expired. Mint a new one at" >&2
+      echo "[kth-canvas]   https://canvas.kth.se/profile/settings" >&2
+    fi
+    echo "[kth-canvas] Body: ${body:0:300}" >&2
+    exit 1
+  fi
+  printf '%s' "$body"
+}
+
+# api_paginate <path> — follow Canvas "Link: rel=next" headers, emit one
+# combined JSON array of every page's items to stdout.
+api_paginate() {
+  require_token
+  local path="$1" url sep
+  case "$path" in
+    http*) url="$path" ;;
+    /*)    url="$BASE$path" ;;
+    *)     url="$BASE/$path" ;;
+  esac
+  case "$url" in *\?*) sep='&' ;; *) sep='?' ;; esac
+  url="${url}${sep}per_page=100"
+
+  local tmp_all; tmp_all="$(mktemp)"
+  printf '[' > "$tmp_all"
+  local first=1
+  while [ -n "$url" ]; do
+    local hdr="/tmp/kth-canvas-hdr.$$"
+    local body; body="$(curl -s -D "$hdr" \
+      -H "Authorization: Bearer $TOKEN" \
+      -H 'Accept: application/json' \
+      "$url")"
+    # Strip the outer [] of this page and append its items.
+    local items
+    items="$(printf '%s' "$body" | python3 -c '
+import json,sys
+try:
+    data=json.load(sys.stdin)
+except Exception:
+    sys.stderr.write("non-JSON page\n"); sys.exit(0)
+if isinstance(data,list):
+    sys.stdout.write(",".join(json.dumps(x) for x in data))
+else:
+    sys.stdout.write(json.dumps(data))
+')"
+    if [ -n "$items" ]; then
+      if [ "$first" = 1 ]; then first=0; else printf ',' >> "$tmp_all"; fi
+      printf '%s' "$items" >> "$tmp_all"
+    fi
+    # Find rel="next" link in the Link header.
+    url="$(grep -i '^link:' "$hdr" 2>/dev/null | tr ',' '\n' \
+      | grep 'rel="next"' | sed -E 's/.*<([^>]+)>.*/\1/' | head -1 || true)"
+    rm -f "$hdr"
+  done
+  printf ']' >> "$tmp_all"
+  cat "$tmp_all"
+  rm -f "$tmp_all"
+}
+
+# ── read verbs ──────────────────────────────────────────────────────
+need_course() { [ -n "${1:-}" ] || { echo "kth canvas $2: missing <courseId>" >&2; exit 2; }; }
+
+cmd_courses() {
+  if [ "${1:-}" = "--all" ]; then
+    api_paginate '/courses?include[]=term'
+  else
+    api_paginate '/courses?enrollment_state=active&include[]=term'
+  fi
+}
+cmd_course()        { need_course "${1:-}" course; api "/courses/$1?include[]=syllabus_body&include[]=term"; }
+cmd_modules()       { need_course "${1:-}" modules; api_paginate "/courses/$1/modules?include[]=items&include[]=content_details"; }
+cmd_pages()         { need_course "${1:-}" pages; api_paginate "/courses/$1/pages?sort=title"; }
+cmd_page()          { need_course "${1:-}" page; [ -n "${2:-}" ] || { echo "kth canvas page: missing <page-url>" >&2; exit 2; }; api "/courses/$1/pages/$2"; }
+cmd_assignments()   { need_course "${1:-}" assignments; api_paginate "/courses/$1/assignments?include[]=submission"; }
+cmd_announcements() { need_course "${1:-}" announcements; api_paginate "/courses/$1/discussion_topics?only_announcements=true"; }
+cmd_files()         { need_course "${1:-}" files; api_paginate "/courses/$1/files"; }
+cmd_syllabus()      { need_course "${1:-}" syllabus; api "/courses/$1?include[]=syllabus_body"; }
+cmd_whoami()        { api '/users/self'; }
+cmd_raw() {
+  [ -n "${1:-}" ] || { echo "kth canvas raw: missing <path>" >&2; exit 2; }
+  if [ "${2:-}" = "--paginate" ]; then api_paginate "$1"; else api "$1"; fi
+}
+
+# ── dump: whole course → markdown tree ──────────────────────────────
+cmd_dump() {
+  need_course "${1:-}" dump
+  local cid="$1"; shift
+  local out=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --out) out="$2"; shift 2 ;;
+      *) echo "kth canvas dump: unknown arg '$1'" >&2; exit 2 ;;
+    esac
+  done
+  out="${out:-./canvas-dump/course-$cid}"
+  require_token
+  mkdir -p "$out"
+
+  echo "[kth-canvas] Dumping course $cid → $out" >&2
+
+  # Gather everything once, hand the JSON to a single python pass that
+  # writes the markdown tree. Page bodies are fetched individually because
+  # the page index doesn't include the body.
+  local course modules assignments announcements files pages_index
+  echo "[kth-canvas]  · course meta"      >&2; course="$(api "/courses/$cid?include[]=syllabus_body&include[]=term&include[]=course_image")"
+  echo "[kth-canvas]  · modules"          >&2; modules="$(api_paginate "/courses/$cid/modules?include[]=items&include[]=content_details" 2>/dev/null || echo '[]')"
+  echo "[kth-canvas]  · assignments"      >&2; assignments="$(api_paginate "/courses/$cid/assignments" 2>/dev/null || echo '[]')"
+  echo "[kth-canvas]  · announcements"    >&2; announcements="$(api_paginate "/courses/$cid/discussion_topics?only_announcements=true" 2>/dev/null || echo '[]')"
+  echo "[kth-canvas]  · files"            >&2; files="$(api_paginate "/courses/$cid/files" 2>/dev/null || echo '[]')"
+  echo "[kth-canvas]  · page index"       >&2; pages_index="$(api_paginate "/courses/$cid/pages?sort=title" 2>/dev/null || echo '[]')"
+
+  # Fetch each wiki page body. Build a JSON array of full page objects.
+  local pages_full="[]"
+  local urls
+  urls="$(printf '%s' "$pages_index" | python3 -c 'import json,sys
+try: d=json.load(sys.stdin)
+except Exception: d=[]
+print("\n".join(p.get("url","") for p in d if p.get("url")))')"
+  if [ -n "$urls" ]; then
+    local pf; pf="$(mktemp)"
+    printf '[' > "$pf"; local first=1
+    while IFS= read -r u; do
+      [ -n "$u" ] || continue
+      echo "[kth-canvas]  · page: $u" >&2
+      local pj; pj="$(api "/courses/$cid/pages/$u" 2>/dev/null || echo '')"
+      [ -n "$pj" ] || continue
+      if [ "$first" = 1 ]; then first=0; else printf ',' >> "$pf"; fi
+      printf '%s' "$pj" >> "$pf"
+    done <<< "$urls"
+    printf ']' >> "$pf"
+    pages_full="$(cat "$pf")"; rm -f "$pf"
+  fi
+
+  # Hand off to the markdown writer.
+  CANVAS_BASE="$BASE" OUT_DIR="$out" COURSE_ID="$cid" python3 - \
+    "$course" "$modules" "$assignments" "$announcements" "$files" "$pages_full" <<'PYDUMP'
+import json, os, re, sys
+from html.parser import HTMLParser
+
+course, modules, assignments, announcements, files, pages = (
+    json.loads(a) if a else None for a in sys.argv[1:7])
+out = os.environ["OUT_DIR"]
+cid = os.environ["COURSE_ID"]
+web_base = os.environ["CANVAS_BASE"].replace("/api/v1", "")
+
+# ── minimal, dependency-free HTML → Markdown ─────────────────────────
+class H2M(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.out=[]; self.list_stack=[]; self.href=None; self.in_pre=False
+        self.skip=0
+    def _w(self,s): self.out.append(s)
+    def handle_starttag(self,tag,attrs):
+        a=dict(attrs)
+        if tag in ("script","style"): self.skip+=1; return
+        if tag in ("h1","h2","h3","h4","h5","h6"):
+            self._w("\n\n"+"#"*int(tag[1])+" ")
+        elif tag=="p": self._w("\n\n")
+        elif tag=="br": self._w("  \n")
+        elif tag in ("strong","b"): self._w("**")
+        elif tag in ("em","i"): self._w("*")
+        elif tag in ("ul","ol"): self.list_stack.append(tag); self._w("\n")
+        elif tag=="li":
+            ind="  "*(len(self.list_stack)-1)
+            mark="- " if (self.list_stack and self.list_stack[-1]=="ul") else "1. "
+            self._w("\n"+ind+mark)
+        elif tag=="a": self.href=a.get("href")
+        elif tag=="img":
+            src=a.get("src",""); alt=a.get("alt","image")
+            self._w(f"![{alt}]({src})")
+        elif tag=="pre": self.in_pre=True; self._w("\n\n```\n")
+        elif tag=="code" and not self.in_pre: self._w("`")
+        elif tag=="blockquote": self._w("\n\n> ")
+        elif tag in ("tr",): self._w("\n")
+        elif tag in ("td","th"): self._w(" | ")
+        elif tag=="hr": self._w("\n\n---\n")
+    def handle_endtag(self,tag):
+        if tag in ("script","style"): self.skip=max(0,self.skip-1); return
+        if tag in ("strong","b"): self._w("**")
+        elif tag in ("em","i"): self._w("*")
+        elif tag in ("ul","ol"):
+            if self.list_stack: self.list_stack.pop()
+            self._w("\n")
+        elif tag=="a":
+            self.href=None
+        elif tag=="pre": self.in_pre=False; self._w("\n```\n")
+        elif tag=="code" and not self.in_pre: self._w("`")
+        elif tag in ("h1","h2","h3","h4","h5","h6","p"): self._w("\n")
+    def handle_data(self,data):
+        if self.skip: return
+        if self.href is not None:
+            text=data.strip()
+            if text: self._w(f"[{text}]({self.href})")
+            return
+        self._w(data if self.in_pre else re.sub(r"[ \t]*\n[ \t]*"," ",data))
+    def text(self):
+        s="".join(self.out)
+        s=re.sub(r"\n{3,}","\n\n",s)
+        return s.strip()+"\n"
+
+def html2md(html):
+    if not html: return ""
+    p=H2M()
+    try: p.feed(html)
+    except Exception: return re.sub(r"<[^>]+>","",html)
+    return p.text()
+
+def slug(s, maxlen=80):
+    s=re.sub(r"<[^>]+>","",s or "")
+    s=re.sub(r"[^\w\s-]","",s).strip().lower()
+    s=re.sub(r"[\s_-]+","-",s)
+    return (s or "untitled")[:maxlen]
+
+def write(path, content):
+    full=os.path.join(out,path)
+    os.makedirs(os.path.dirname(full), exist_ok=True)
+    with open(full,"w") as f: f.write(content)
+    return path
+
+written=[]
+
+# ── course README / index ────────────────────────────────────────────
+name=course.get("name","Course %s"%cid) if course else "Course %s"%cid
+code=course.get("course_code","") if course else ""
+term=(course.get("term") or {}).get("name","") if course else ""
+md=[f"# {name}\n"]
+if code: md.append(f"**Course code:** {code}  ")
+if term: md.append(f"**Term:** {term}  ")
+md.append(f"**Canvas course:** {web_base}/courses/{cid}  ")
+md.append(f"**Course ID:** {cid}\n")
+md.append("## Contents of this dump\n")
+md.append("- `syllabus.md` — course syllabus")
+md.append("- `front-page.md` — course front page (if set)")
+md.append("- `pages/` — all wiki pages")
+md.append("- `modules/` — module structure with item links")
+md.append("- `assignments/` — assignment descriptions")
+md.append("- `announcements/` — announcements")
+md.append("- `files.md` — file manifest with download URLs\n")
+
+# ── syllabus ─────────────────────────────────────────────────────────
+syl=(course or {}).get("syllabus_body") or ""
+if syl.strip():
+    written.append(write("syllabus.md", f"# Syllabus — {name}\n\n"+html2md(syl)))
+
+# ── front page ───────────────────────────────────────────────────────
+front=[p for p in (pages or []) if p.get("front_page")]
+if front:
+    fp=front[0]
+    written.append(write("front-page.md", f"# {fp.get('title','Front Page')}\n\n"+html2md(fp.get('body',''))))
+
+# ── wiki pages ───────────────────────────────────────────────────────
+for p in (pages or []):
+    title=p.get("title","Untitled")
+    body=html2md(p.get("body",""))
+    meta=f"> Wiki page · `{p.get('url','')}` · updated {p.get('updated_at','?')}\n\n"
+    written.append(write(f"pages/{slug(title)}.md", f"# {title}\n\n{meta}{body}"))
+
+# ── modules + items ──────────────────────────────────────────────────
+mod_index=["# Modules\n"]
+for i,m in enumerate(modules or [],1):
+    mtitle=m.get("name","Module %d"%i)
+    lines=[f"# {mtitle}\n"]
+    if m.get("state"): lines.append(f"*State: {m['state']}*\n")
+    for it in m.get("items",[]):
+        t=it.get("type","")
+        title=it.get("title","")
+        url=it.get("html_url","")
+        indent="  "*(it.get("indent",0))
+        label={"SubHeader":f"**{title}**","Assignment":f"📝 {title}","Page":f"📄 {title}",
+               "File":f"📎 {title}","Discussion":f"💬 {title}","Quiz":f"❓ {title}",
+               "ExternalUrl":f"🔗 {title}","ExternalTool":f"🔧 {title}"}.get(t,title)
+        if url and t!="SubHeader":
+            lines.append(f"{indent}- [{label}]({url})")
+        else:
+            lines.append(f"{indent}- {label}")
+    fn=f"modules/{i:02d}-{slug(mtitle)}.md"
+    written.append(write(fn, "\n".join(lines)+"\n"))
+    mod_index.append(f"{i}. [{mtitle}]({fn.replace('modules/','')}) — {len(m.get('items',[]))} items")
+if len(mod_index)>1:
+    written.append(write("modules/README.md","\n".join(mod_index)+"\n"))
+
+# ── assignments ──────────────────────────────────────────────────────
+asg_index=["# Assignments\n"]
+for a in (assignments or []):
+    title=a.get("name","Untitled")
+    body=html2md(a.get("description",""))
+    meta=[]
+    if a.get("due_at"): meta.append(f"**Due:** {a['due_at']}")
+    if a.get("points_possible") is not None: meta.append(f"**Points:** {a['points_possible']}")
+    if a.get("html_url"): meta.append(f"[Open in Canvas]({a['html_url']})")
+    fn=f"assignments/{a.get('id','x')}-{slug(title)}.md"
+    written.append(write(fn, f"# {title}\n\n"+("  \n".join(meta)+"\n\n" if meta else "")+body))
+    asg_index.append(f"- [{title}]({a.get('id','x')}-{slug(title)}.md)")
+if len(asg_index)>1:
+    written.append(write("assignments/README.md","\n".join(asg_index)+"\n"))
+
+# ── announcements ────────────────────────────────────────────────────
+for an in (announcements or []):
+    title=an.get("title","Announcement")
+    body=html2md(an.get("message",""))
+    meta=f"> Posted {an.get('posted_at') or an.get('created_at','?')}\n\n"
+    written.append(write(f"announcements/{slug(title)}.md", f"# {title}\n\n{meta}{body}"))
+
+# ── files manifest ───────────────────────────────────────────────────
+if files:
+    fl=["# Files\n", f"{len(files)} file(s). Download URLs are token-scoped Canvas links.\n"]
+    for f in files:
+        sz=f.get("size",0); kb=f"{sz/1024:.0f} KB" if sz else ""
+        fl.append(f"- **{f.get('display_name', f.get('filename','?'))}** "
+                  f"({f.get('content-type','')}, {kb})  \n  {f.get('url','')}")
+    written.append(write("files.md","\n".join(fl)+"\n"))
+    md.append(f"\n_{len(files)} files catalogued in `files.md`._")
+
+write("README.md","\n".join(md)+"\n")
+
+print(f"Wrote {len(written)+1} markdown files to {out}/")
+print(f"  pages: {len(pages or [])}  modules: {len(modules or [])}  "
+      f"assignments: {len(assignments or [])}  announcements: {len(announcements or [])}  "
+      f"files: {len(files or [])}")
+PYDUMP
+}
+
+# ── dispatch ────────────────────────────────────────────────────────
+cmd="${1:-help}"
+shift || true
+case "$cmd" in
+  token)
+    if [ "${1:-}" = "--set" ]; then set_token "${2:-}"; else resolve_token && echo || { echo "[kth-canvas] no token stored" >&2; exit 1; }; fi ;;
+  whoami)        cmd_whoami "$@" ;;
+  courses)       cmd_courses "$@" ;;
+  course)        cmd_course "$@" ;;
+  modules)       cmd_modules "$@" ;;
+  pages)         cmd_pages "$@" ;;
+  page)          cmd_page "$@" ;;
+  assignments)   cmd_assignments "$@" ;;
+  announcements) cmd_announcements "$@" ;;
+  files)         cmd_files "$@" ;;
+  syllabus)      cmd_syllabus "$@" ;;
+  raw)           cmd_raw "$@" ;;
+  dump)          cmd_dump "$@" ;;
+  help|-h|--help) usage ;;
+  *)
+    echo "kth-canvas: unknown command '$cmd'" >&2
+    echo >&2; usage >&2; exit 2 ;;
+esac

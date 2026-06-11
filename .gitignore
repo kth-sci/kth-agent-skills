@@ -1,0 +1,23 @@
+# Local artifacts produced by the kth-* CLIs — never repo material.
+
+# Prisma/VR working directory — real application content, IDs, CVs, draft
+# PDFs, participant data. NEVER commit (this is a public repo).
+.prisma-work/
+
+# macOS junk
+.DS_Store
+**/.DS_Store
+
+# Canvas course dumps (kth canvas dump) — course content, not source.
+canvas-dump/
+
+# Credentials / tokens / cookies that might land in the working dir.
+*.canvas-token
+.canvas-token
+.cookies-*.txt
+secrets.env
+config.env
+
+# Python bytecode
+__pycache__/
+*.pyc

@@ -1,0 +1,412 @@
+#!/usr/bin/env bash
+# kth-efh — query KTH's Unit4 EFH (e-invoice handling) task notifications.
+#
+# Backend: https://agrprodweb01.ug.kth.se/agrprod/  (Unit4 ERP).
+#
+# Authentication: the cookie jar at $KTH_EFH_COOKIE_JAR (Netscape format)
+# must be populated before calling any verb. Two ways to populate it:
+#
+#   1. Chrome extension (claude-in-chrome MCP): navigate to the EFH URL,
+#      then use javascript_tool to export document.cookie into the jar file.
+#      See skills/kth-efh/SKILL.md for the recipe.
+#
+#   2. Manual: copy cookies from DevTools → Application → Cookies into the
+#      Netscape-format file at $KTH_EFH_COOKIE_JAR.
+#
+# Once the cookie jar exists, all read verbs are pure curl — cron-friendly.
+set -euo pipefail
+
+# Resolve repo root via symlink-aware path walk so the default profile
+# can live inside the agenthon checkout (matches bin/kth).
+__src="${BASH_SOURCE[0]}"
+while [ -L "$__src" ]; do
+  __target="$(readlink "$__src")"
+  case "$__target" in
+    /*) __src="$__target" ;;
+    *)  __src="$(cd "$(dirname "$__src")" && pwd)/$__target" ;;
+  esac
+done
+REPO_DIR="$(cd "$(dirname "$__src")/.." && pwd)"
+
+# Source user preferences (KTH_USER_NAME, KTH_EFH_PROJECT_ACCOUNTS, …).
+if [ -f "$HOME/.config/kth-cli/config.env" ]; then
+  # shellcheck disable=SC1091
+  . "$HOME/.config/kth-cli/config.env"
+fi
+
+COOKIE_JAR="${KTH_EFH_COOKIE_JAR:-$HOME/.config/kth-cli/.cookies-agrprod.txt}"
+BASE='https://agrprodweb01.ug.kth.se/agrprod'
+
+usage() {
+  cat <<'EOF'
+Usage: kth efh <command> [args...]
+
+Read-only (pure curl, fast):
+  tasks                   List pending task categories (JSON array).
+  count                   Total count of pending tasks. Cron-friendly.
+  session                 Show current Unit4 session info.
+  url <viewId> [qs]       Print the deep-link URL for a Unit4 view.
+  invoice [--out DIR]     Download every doc for a cached invoice (pure
+                          curl). Discovery is done via Chrome extension.
+  summary [vernr]         Parse the EI02 Faktura.htm; propose Proj +
+                          draft comment from project-accounts.yaml.
+
+  help, -h, --help        Show this help.
+
+Cookie jar (must be populated before first call):
+  The cookie jar lives at $KTH_EFH_COOKIE_JAR (default:
+  ~/.config/kth-cli/.cookies-agrprod.txt) in Netscape format.
+  Populate it via the Chrome extension (claude-in-chrome MCP)
+  javascript_tool — see skills/kth-efh/SKILL.md for the recipe.
+
+Environment:
+  KTH_EFH_COOKIE_JAR      Override cookie-jar path (Netscape format).
+  KTH_EFH_CLIENT          Override Unit4 client.
+  KTH_EFH_USER            Override Unit4 userId.
+  KTH_EFH_CACHE_DIR       Override discovery-cache directory.
+
+Architecture: pure curl for READ. Write actions (Ekonomisk attest etc.)
+are ASP.NET WebForms postbacks with server-encrypted __VIEWSTATE blobs,
+so curl replay is structurally impossible. For write actions, use the
+Chrome extension (claude-in-chrome MCP) to navigate + interact with
+the UI directly. The user clicks money-moving buttons in the visible
+window. See skills/kth-efh/SKILL.md for the full architecture.
+EOF
+}
+
+# Ensure the cookie jar exists. If it doesn't, print instructions for
+# populating it via the Chrome extension and exit.
+require_cookies() {
+  if [ -f "$COOKIE_JAR" ]; then
+    return 0
+  fi
+  cat >&2 <<NOJAR
+[kth-efh] Cookie jar not found: $COOKIE_JAR
+
+Populate it using the Chrome extension (claude-in-chrome MCP):
+
+  1. navigate to https://agrprodweb01.ug.kth.se/agrprod/
+     (complete the KTH SSO if prompted)
+  2. Use javascript_tool to export cookies:
+
+     javascript_tool: |
+       const jar = document.cookie.split('; ').map(c => {
+         const [name, ...rest] = c.split('=');
+         return 'agrprodweb01.ug.kth.se\\tFALSE\\t/agrprod\\tTRUE\\t0\\t'
+                + name + '\\t' + rest.join('=');
+       }).join('\\n');
+       '# Netscape HTTP Cookie File\\n' + jar;
+
+  3. Write the output to: $COOKIE_JAR
+
+Or manually copy the cookies from DevTools → Application → Cookies
+into a Netscape-format file at that path.
+NOJAR
+  exit 1
+}
+
+# api <path> — fetch JSON. Requires a populated cookie jar.
+api() {
+  local path="$1"
+  require_cookies
+  local body http
+  http=$(curl -s -o /tmp/kth-efh-body.$$ -w '%{http_code}' \
+    -b "$COOKIE_JAR" \
+    -H 'Accept: application/json' \
+    "$BASE$path")
+  body="$(cat /tmp/kth-efh-body.$$ 2>/dev/null || true)"
+  rm -f /tmp/kth-efh-body.$$
+  if [ "$http" -ge 400 ]; then
+    echo "[kth-efh] HTTP $http on $path. Cookies may have expired." >&2
+    echo "[kth-efh] Re-export cookies via the Chrome extension, then retry." >&2
+    echo "[kth-efh] Body: ${body:0:200}" >&2
+    exit 1
+  fi
+  printf '%s' "$body"
+}
+
+session() {
+  api '/api/session/current'
+}
+
+resolve_client_user() {
+  if [ -n "${KTH_EFH_CLIENT:-}" ] && [ -n "${KTH_EFH_USER:-}" ]; then
+    echo "$KTH_EFH_CLIENT $KTH_EFH_USER"
+    return
+  fi
+  local info
+  info="$(session)"
+  python3 - "$info" <<'PY'
+import json, sys, os
+info = json.loads(sys.argv[1])
+client = os.environ.get('KTH_EFH_CLIENT') or info['client']
+user   = os.environ.get('KTH_EFH_USER')   or info['userId']
+print(client, user)
+PY
+}
+
+tasks() {
+  read -r client user < <(resolve_client_user)
+  api "/api/tasknotifications/$client/$user?page=1&start=0&limit=25"
+}
+
+count_only() {
+  tasks | python3 -c "import json, sys; data = json.load(sys.stdin); print(sum(x.get('count', 0) for x in data))"
+}
+
+url_for() {
+  local view="${1:-}" qs="${2:-}"
+  [ -n "$view" ] || { echo "kth efh url: missing <viewId>" >&2; exit 2; }
+  printf '%s/main.aspx?view=%s%s\n' "$BASE" "$view" "${qs:+&$qs}"
+}
+
+CACHE_DIR="${KTH_EFH_CACHE_DIR:-$HOME/.config/kth-cli/.efh-cache}"
+
+invoice_drill() {
+  # Download every document for a cached invoice via pure curl.
+  #
+  # Discovery (populating the cache) is done via the Chrome extension
+  # (claude-in-chrome MCP) — see skills/kth-efh/SKILL.md for the recipe.
+  # This function only handles the runtime download from an existing cache.
+  #
+  # If no cache exists for the requested vernr, it prints instructions
+  # for how to perform discovery via the Chrome extension.
+  local out_dir=""
+  local vernr_arg=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --out)     out_dir="$2"; shift 2 ;;
+      --refresh) echo "[kth-efh] --refresh: re-discovery is now done via Chrome extension." >&2
+                 echo "[kth-efh] See skills/kth-efh/SKILL.md § 'Invoice discovery via Chrome extension'." >&2
+                 return 2 ;;
+      --*)       echo "kth efh invoice: unknown flag '$1'" >&2; exit 2 ;;
+      *)         vernr_arg="$1"; shift ;;
+    esac
+  done
+
+  require_cookies
+  mkdir -p "$CACHE_DIR"
+
+  # If a vernr was given and we have a cache, download directly.
+  if [ -n "$vernr_arg" ] && [ -f "$CACHE_DIR/$vernr_arg.json" ]; then
+    echo "[kth-efh] Using cached discovery for $vernr_arg (pure curl)" >&2
+    invoice_download_from_cache "$vernr_arg" "$out_dir"
+    return $?
+  fi
+
+  # If no vernr was given, try the most recent cache entry.
+  if [ -z "$vernr_arg" ]; then
+    vernr_arg="$(ls -t "$CACHE_DIR"/*.json 2>/dev/null | head -1 | xargs -I{} basename {} .json)"
+    if [ -n "$vernr_arg" ] && [ -f "$CACHE_DIR/$vernr_arg.json" ]; then
+      echo "[kth-efh] Using most recent cached invoice: $vernr_arg" >&2
+      invoice_download_from_cache "$vernr_arg" "$out_dir"
+      return $?
+    fi
+  fi
+
+  # No cache found — tell the user how to discover via Chrome extension.
+  cat >&2 <<NODISCOVERY
+[kth-efh] No cached discovery for ${vernr_arg:-<unknown>}.
+
+Invoice discovery is done via the Chrome extension (claude-in-chrome MCP).
+See skills/kth-efh/SKILL.md section "Invoice discovery via Chrome extension"
+for the step-by-step recipe. Once discovery populates
+  $CACHE_DIR/<vernr>.json
+re-run this command and the download will proceed via pure curl.
+NODISCOVERY
+  return 1
+}
+
+invoice_download_from_cache() {
+  # Pure-curl download of every document listed in a cached manifest.
+  # Returns/prints the per-invoice JSON manifest with HTTP status, size,
+  # content-type and local file path for each document.
+  local vernr="$1" out_override="$2"
+  local cache_path="$CACHE_DIR/$vernr.json"
+  [ -f "$cache_path" ] || { echo "[kth-efh] no cache for $vernr" >&2; return 1; }
+
+  # Make sure cookie jar exists before the bulk download
+  require_cookies
+
+  KTH_EFH_COOKIE_JAR="$COOKIE_JAR" \
+  python3 - "$cache_path" "$out_override" <<'PY'
+import json, os, re, subprocess, sys, time
+cache_path = sys.argv[1]
+out_override = sys.argv[2]
+jar = os.environ['KTH_EFH_COOKIE_JAR']
+
+m = json.load(open(cache_path))
+vernr = m['vernr']; client = m['client']
+access_id = m['access_id']
+parent_access_id = m.get('parent_access_id') or 'AP278'
+base = 'https://agrprodweb01.ug.kth.se/agrprod'
+out_dir = out_override or f"./efh-invoice-{vernr}"
+os.makedirs(out_dir, exist_ok=True)
+
+ext_by_ctype = {
+    'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png',
+    'application/xml': '.xml', 'text/xml': '.xml',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+    'application/msword': '.doc',
+}
+
+manifest = dict(m)
+manifest['downloaded_at_unix'] = int(time.time())
+manifest['documents'] = []
+
+for d in m['documents']:
+    doctype, uuid_ = d['docType'], d['uuid']
+    # The EI02 binary needs both access IDs; OVRDOK works with either.
+    # Use both for safety.
+    qs = f"?_parentAccessId={parent_access_id}&_accessId={access_id}"
+    path = f"/api/documents/{client}/{doctype}/{uuid_}/1/1/1{qs}"
+    tmp_out = os.path.join(out_dir, f"{doctype}-{uuid_}.tmp")
+    res = subprocess.run([
+        'curl', '-sS', '-b', jar,
+        '-H', 'Referer: https://agrprodweb01.ug.kth.se/agrprod/',
+        '-o', tmp_out,
+        '-w', '%{http_code}|%{content_type}|%{size_download}',
+        base + path,
+    ], capture_output=True, text=True)
+    parts = (res.stdout.strip().split('|') + ['','',''])[:3]
+    http, ctype, size = parts
+    # Pick an extension
+    base_ct = (ctype or '').split(';')[0].strip().lower()
+    if 'html' in base_ct: ext = '.html'
+    elif base_ct in ext_by_ctype: ext = ext_by_ctype[base_ct]
+    elif 'json' in base_ct: ext = '.json'
+    else: ext = '.bin'
+    final = os.path.join(out_dir, f"{doctype}-{uuid_}{ext}")
+    if os.path.exists(tmp_out):
+        os.replace(tmp_out, final)
+    manifest['documents'].append({
+        'docType': doctype, 'uuid': uuid_,
+        'http': int(http) if http.isdigit() else http,
+        'contentType': ctype,
+        'sizeBytes': int(size) if size.isdigit() else size,
+        'file': os.path.relpath(final, out_dir),
+    })
+    print(f"  [{http}] {doctype}/{uuid_}  {size}B  {ctype}", file=sys.stderr)
+
+mpath = os.path.join(out_dir, 'manifest.json')
+with open(mpath, 'w') as f:
+    json.dump(manifest, f, indent=2, ensure_ascii=False)
+print(f"[kth-efh] Manifest: {mpath}", file=sys.stderr)
+print(json.dumps(manifest, indent=2, ensure_ascii=False))
+PY
+}
+
+invoice_summary() {
+  # Parse the EI02 Faktura.htm + apply project-accounts.yaml rules.
+  # Steps:
+  #   1. Resolve target vernr (arg, or current-top via discovery).
+  #   2. Ensure EI02 file is on disk (download via cache fast-path if needed).
+  #   3. Run the heredoc parser → JSON to stdout.
+  local vernr_arg="" out_override=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --out) out_override="$2"; shift 2 ;;
+      --*)   echo "kth efh summary: unknown flag '$1'" >&2; exit 2 ;;
+      *)     vernr_arg="$1"; shift ;;
+    esac
+  done
+
+  # Resolve vernr — fall through to discovery if not given
+  local vernr="$vernr_arg"
+  if [ -z "$vernr" ]; then
+    # use most recently-cached one if it exists, else trigger discovery
+    vernr="$(ls -t "$CACHE_DIR"/*.json 2>/dev/null | head -1 | xargs -I{} basename {} .json)"
+    if [ -z "$vernr" ]; then
+      echo "[kth-efh] No cached invoice; running discovery first…" >&2
+      invoice_drill --out "${out_override:-}" || return $?
+      vernr="$(ls -t "$CACHE_DIR"/*.json 2>/dev/null | head -1 | xargs -I{} basename {} .json)"
+      [ -n "$vernr" ] || { echo "[kth-efh] discovery failed" >&2; return 1; }
+    fi
+  fi
+
+  # Decide where files live (or should land)
+  local out_dir="${out_override:-./efh-invoice-$vernr}"
+  # NOTE: `|| true` guards against `set -o pipefail` killing the function
+  # when the EI02 file isn't on disk yet (ls returns non-zero on no match).
+  local ei02_file=""
+  ei02_file="$(ls "$out_dir"/EI02-*.html 2>/dev/null | head -1 || true)"
+
+  if [ -z "$ei02_file" ]; then
+    if [ -f "$CACHE_DIR/$vernr.json" ]; then
+      echo "[kth-efh] EI02 not on disk yet for $vernr — downloading from cache…" >&2
+      invoice_download_from_cache "$vernr" "$out_dir" >/dev/null || true
+      ei02_file="$(ls "$out_dir"/EI02-*.html 2>/dev/null | head -1 || true)"
+    fi
+  fi
+
+  [ -n "$ei02_file" ] || { echo "[kth-efh] Cannot find or download EI02 for $vernr" >&2; return 1; }
+
+  # Locate the user's project-accounts.yaml. Resolution order:
+  #   1) $KTH_EFH_PROJECT_ACCOUNTS env override (set via config.env)
+  #   2) ~/.config/kth-cli/project-accounts.yaml  (primary user-config)
+  #   3) legacy: ~/.claude/skills/kth-efh/references/...
+  #   4) legacy: <repo>/skills/kth-efh/references/...
+  local accounts="${KTH_EFH_PROJECT_ACCOUNTS:-}"
+  if [ -z "$accounts" ] || [ ! -f "$accounts" ]; then
+    for p in \
+      "$HOME/.config/kth-cli/project-accounts.yaml" \
+      "$HOME/.claude/skills/kth-efh/references/project-accounts.yaml" \
+      "$REPO_DIR/skills/kth-efh/references/project-accounts.yaml" \
+      ; do
+      [ -f "$p" ] && { accounts="$p"; break; }
+    done
+  fi
+
+  KTH_EFH_EI02="$ei02_file" \
+  KTH_EFH_VERNR="$vernr" \
+  KTH_EFH_PROJECT_ACCOUNTS="$accounts" \
+  exec "$(dirname "$0")/kth-efh-parse"
+}
+
+# =============================================================
+# Write / UI interaction helpers.
+#
+# Unit4 EFH write actions (Ekonomisk attest, Parkera, Sakattestera, …)
+# are ASP.NET WebForms postbacks to ContentContainer.aspx with
+# server-encrypted __VIEWSTATE blobs. Pure curl replay is structurally
+# impossible. Use the Chrome extension (claude-in-chrome MCP) to drive
+# the UI interactively. The user clicks money-moving buttons.
+# =============================================================
+
+efh_chrome_extension_hint() {
+  local verb="${1:-write action}"
+  cat <<EOF >&2
+
+[kth efh] '$verb' requires interactive browser access.
+
+Use the Chrome extension (claude-in-chrome MCP) to perform this action:
+
+  1. navigate to: https://agrprodweb01.ug.kth.se/agrprod/
+  2. Use read_page / find to locate the task bell and click it
+  3. Click the relevant task row to open the invoice detail
+  4. For '$verb': locate and interact with the button via the extension
+
+Write actions (Ekonomisk attest, etc.) are ASP.NET WebForms postbacks
+with server-encrypted __VIEWSTATE — they MUST be done in the live
+browser. The user clicks money-moving buttons.
+
+See skills/kth-efh/SKILL.md for the full Chrome extension workflow.
+EOF
+  return 2
+}
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  tasks)     tasks ;;
+  count)     count_only ;;
+  session)   session ;;
+  url)       url_for "$@" ;;
+  invoice)   invoice_drill "$@" ;;
+  summary)   invoice_summary "$@" ;;
+  open-task|approve|park|comment|set-proj|forward|reject|escalate)
+             efh_chrome_extension_hint "$cmd" ;;
+  help|-h|--help) usage ;;
+  *) echo "kth efh: unknown command '$cmd'" >&2; echo >&2; usage >&2; exit 2 ;;
+esac

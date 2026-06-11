@@ -1,0 +1,374 @@
+#!/usr/bin/env bash
+# kth-wisum — query and shop in KTH's WISUM purchasing system.
+#
+# Backend: https://www.wisum.its.umu.se/KTH/  (hosted by Umeå University ITS).
+# Auth:    KTH Shibboleth IdP — federates silently through warm KTH SSO.
+#
+# Two architectures, intentionally:
+#
+#   READ + LIGHT-WRITE (curl)
+#     WISUM exposes JSON ASMX endpoints
+#     (/KTH/ws/{Tree,Product,Supplier}WebService.asmx) that return clean
+#     {"d": <data>} payloads with cookie auth. Used for: search, cart-
+#     total, categories, favorites, add-to-cart, set-favorite.
+#
+#   CART MANAGEMENT + CHECKOUT (Chrome extension — claude-in-chrome MCP)
+#     The cart picker (VerboseShoppingCart.aspx) and the checkout form
+#     (W2CheckOut.aspx) use Telerik RadComboBox widgets that need real
+#     DOM click events to fire ASP.NET postbacks. The recipe is:
+#       cb.findItemByText(text).get_element().click()
+#     See memory project_wisum_telerik_combobox_recipe for the gory
+#     details. Cart management and checkout are now driven interactively
+#     by the agent via the Chrome extension's javascript_tool and
+#     computer tools — the CLI subcommands below are stubs that print
+#     guidance. The agent stops at Slutfor so the user clicks the final
+#     "submit order" button per the irreversible-writes-stay-in-browser
+#     principle.
+set -euo pipefail
+
+# Resolve repo + profile dir (matches bin/kth-efh pattern)
+__src="${BASH_SOURCE[0]}"
+while [ -L "$__src" ]; do
+  __target="$(readlink "$__src")"
+  case "$__target" in
+    /*) __src="$__target" ;;
+    *)  __src="$(cd "$(dirname "$__src")" && pwd)/$__target" ;;
+  esac
+done
+REPO_DIR="$(cd "$(dirname "$__src")/.." && pwd)"
+
+# Source user preferences (KTH_USER_NAME, KTH_WISUM_*). All optional;
+# the CLI falls back to flags when unset.
+if [ -f "$HOME/.config/kth-cli/config.env" ]; then
+  # shellcheck disable=SC1091
+  . "$HOME/.config/kth-cli/config.env"
+fi
+
+PROFILE_DIR="${KTH_PROFILE_DIR:-$HOME/.config/browser-profile}"
+COOKIE_JAR="${KTH_WISUM_COOKIE_JAR:-$PROFILE_DIR/.cookies-wisum.txt}"
+BASE='https://www.wisum.its.umu.se/KTH'
+
+# Defaults that flow into `kth wisum checkout` (overridable per-call).
+# Pulled from ~/.config/kth-cli/config.env (sourced above). If unset
+# and no flag is passed, the command errors with a helpful pointer.
+KTH_WISUM_ENHET="${KTH_WISUM_ENHET:-}"
+KTH_WISUM_ADDRESS="${KTH_WISUM_ADDRESS:-}"
+KTH_WISUM_GODSMARKNING="${KTH_WISUM_GODSMARKNING:-${KTH_USER_NAME:-}}"
+
+usage() {
+  cat <<'EOF'
+Usage: kth wisum <command> [args...]
+
+READ-ONLY (pure curl, fast):
+  search <query> [--page N] [--per-page M] [--json]
+                       Search products by free text.
+  categories           List top-level product categories.
+  category <id>        Products in a category.
+  favorites            List favorited products.
+  cart                 Active cart total.
+  raw <Service> <Method> [body]
+                       Low-level ASMX call.
+
+LIGHT WRITE (pure curl, reversible):
+  add <supplier-product-id> [qty]
+                       Add a product to the active cart.
+  favorite <product-id>
+  unfavorite <product-id>
+
+CART MANAGEMENT (Chrome extension — use interactively):
+  carts                [migrated] Use Chrome extension to browse carts.
+  select <pattern>     [migrated] Use Chrome extension to select a cart.
+  cart-detail          [migrated] Use Chrome extension to view cart items.
+  delete <pattern>     [migrated] Use Chrome extension to delete a cart.
+  cleanup              [migrated] Use Chrome extension to clean up carts.
+
+CHECKOUT (Chrome extension — use interactively):
+  checkout             [migrated] Use Chrome extension interactively.
+                       See skills/kth-wisum/SKILL.md for the step-by-step
+                       workflow using javascript_tool + computer clicks.
+                       The agent fills Telerik widgets via JS and advances
+                       steps via visual clicks. Stops at Slutfor — user
+                       clicks the final submit.
+  addresses            [migrated] Use Chrome extension javascript_tool to
+                       enumerate address combobox options.
+  enheter              [migrated] Use Chrome extension javascript_tool to
+                       enumerate Enhet combobox options.
+
+INSPECT / REFRESH:
+  refresh              Check/reuse cookie jar (export TODO for Chrome ext).
+  open                 Print URL to navigate to in Chrome.
+  help, -h, --help
+
+User config (sourced from ~/.config/kth-cli/config.env on every run):
+  KTH_USER_NAME         Your display name on KTH/WISUM. Used as fallback
+                        Godsmärkning + DOM selector hint.
+  KTH_WISUM_ENHET       Default Enhet for `checkout`.
+  KTH_WISUM_ADDRESS     Default delivery address.
+  KTH_WISUM_GODSMARKNING Default parcel label (typically your name).
+
+Other env:
+  KTH_PROFILE_DIR       Browser profile (default <repo>/browser-profile).
+  KTH_WISUM_COOKIE_JAR  Cookie jar override.
+
+Setup
+  Copy <repo>/config/kth-cli.example.env → ~/.config/kth-cli/config.env
+  and edit the values. install.sh will also seed it on first run.
+EOF
+}
+
+# =============================================================
+# Cookie / curl plumbing (used by ASMX calls)
+# =============================================================
+refresh_cookies() {
+  # TODO: Rework cookie export for Chrome extension architecture.
+  # The old agent-browser cookie export is removed. Options:
+  #   1. Use Chrome DevTools Protocol via the extension to read cookies
+  #   2. Manually copy cookies from Chrome's cookie store
+  #   3. Use javascript_tool with document.cookie (limited to non-httpOnly)
+  # For now, if the cookie jar exists it will be reused; if not, the
+  # curl-based verbs will fail with a helpful message.
+  if [ -f "$COOKIE_JAR" ]; then
+    echo "[kth-wisum] Using existing cookie jar at $COOKIE_JAR" >&2
+    echo "[kth-wisum] If auth fails, navigate to WISUM in Chrome to refresh the session," >&2
+    echo "            then re-export cookies manually." >&2
+  else
+    echo "[kth-wisum] No cookie jar found at $COOKIE_JAR" >&2
+    echo "[kth-wisum] Cookie export from Chrome extension is not yet implemented." >&2
+    echo "[kth-wisum] Workaround: navigate to WISUM in Chrome, then export cookies" >&2
+    echo "            from DevTools > Application > Cookies into Netscape format." >&2
+    exit 1
+  fi
+}
+
+asmx() {
+  local svc="$1" method="$2"
+  local body="${3-}"; [ -z "$body" ] && body='{}'
+  [ -f "$COOKIE_JAR" ] || refresh_cookies
+  local http rsp
+  http=$(curl -sS -o /tmp/kth-wisum-body.$$ -w '%{http_code}' \
+    -b "$COOKIE_JAR" \
+    -H 'Content-Type: application/json; charset=utf-8' \
+    -H 'Accept: application/json, text/javascript, */*; q=0.01' \
+    -H 'X-Requested-With: XMLHttpRequest' \
+    -X POST -d "$body" \
+    "$BASE/ws/$svc.asmx/$method")
+  rsp="$(cat /tmp/kth-wisum-body.$$ 2>/dev/null || true)"
+  rm -f /tmp/kth-wisum-body.$$
+  if [ "$http" -ge 400 ]; then
+    echo "[kth-wisum] HTTP $http on $svc.$method — refreshing cookies and retrying…" >&2
+    refresh_cookies
+    http=$(curl -sS -o /tmp/kth-wisum-body.$$ -w '%{http_code}' \
+      -b "$COOKIE_JAR" \
+      -H 'Content-Type: application/json; charset=utf-8' \
+      -H 'Accept: application/json, text/javascript, */*; q=0.01' \
+      -H 'X-Requested-With: XMLHttpRequest' \
+      -X POST -d "$body" \
+      "$BASE/ws/$svc.asmx/$method")
+    rsp="$(cat /tmp/kth-wisum-body.$$ 2>/dev/null || true)"
+    rm -f /tmp/kth-wisum-body.$$
+  fi
+  if [ "$http" -ge 400 ]; then
+    echo "[kth-wisum] HTTP $http after retry on $svc.$method" >&2
+    echo "$rsp" >&2
+    exit 1
+  fi
+  printf '%s' "$rsp"
+}
+
+unwrap() {
+  python3 -c "
+import json, sys
+try:
+    obj = json.loads(sys.stdin.read())
+    out = obj.get('d', obj) if isinstance(obj, dict) else obj
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+except Exception as e:
+    print(f'(parse error: {e})', file=sys.stderr)
+    sys.exit(1)
+"
+}
+
+# =============================================================
+# Browser helpers — REMOVED (migrated to Chrome extension)
+# =============================================================
+# The old agent-browser (_ab) helpers have been removed. Browser-driven
+# operations (cart management, checkout, Telerik widget interaction) are
+# now performed interactively by the agent via the Claude Chrome
+# extension (claude-in-chrome MCP) using:
+#   - navigate:        open a WISUM page
+#   - read_page:       inspect page state
+#   - javascript_tool: manipulate Telerik RadComboBox widgets
+#   - computer:        click buttons (Nasta steg, Till kassan, etc.)
+#
+# The Telerik combobox recipe (used in javascript_tool) is:
+#   $find('<combobox_id>').findItemByText('<text>').get_element().click()
+#
+# See skills/kth-wisum/SKILL.md for full javascript_tool snippets.
+
+_chrome_extension_required() {
+  cat >&2 <<'EOF'
+[kth-wisum] This command has been migrated to the Chrome extension.
+            Use the Claude Chrome extension (claude-in-chrome MCP)
+            interactively instead. See skills/kth-wisum/SKILL.md
+            for the step-by-step workflow.
+EOF
+  exit 1
+}
+
+# =============================================================
+# READ-ONLY verbs (pure curl)
+# =============================================================
+cmd_search() {
+  local query="" page=1 per=10 json=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --page)     page="$2"; shift 2 ;;
+      --per-page) per="$2";  shift 2 ;;
+      --json)     json=1;    shift ;;
+      *)          query="$1"; shift ;;
+    esac
+  done
+  [ -n "$query" ] || { echo "kth wisum search: missing query" >&2; exit 2; }
+  local start=$(( (page - 1) * per ))
+  local body
+  body=$(python3 -c "import json; print(json.dumps({'searchQuery': '$query', 'startIndex': $start, 'maximumRows': $per, 'sortExpressions': ''}))")
+  local raw
+  raw=$(asmx TreeWebService GetProductsBySimpleSearch "$body")
+  if [ "$json" = "1" ]; then printf '%s' "$raw" | unwrap; return; fi
+  printf '%s' "$raw" | python3 -c "
+import json, sys
+d = json.load(sys.stdin).get('d', {})
+total = d.get('Count', 0)
+items = d.get('Data', []) or []
+print(f'  Total matches: {total}  (showing {len(items)} on page $page of {(total + $per - 1) // $per if $per > 0 else 1})')
+print()
+for p in items:
+    name, price = p.get('Name',''), p.get('FormattedPriceWithCurrency','')
+    sup, dt    = p.get('TillverkarNamn') or '', p.get('DeliveryTime','')
+    pid, artn  = p.get('SupplierProductId','?'), p.get('TillvArtnr','')
+    print(f'  [{pid}] {name[:60]}  —  {price}  ({sup}{(\" / leverans \" + dt) if dt else \"\"})')
+    if artn: print(f'      art.nr: {artn}')
+"
+}
+
+cmd_cart() {
+  asmx TreeWebService GetActiveCartQuantityAndSum "{}" | python3 -c "
+import json, sys
+d = json.load(sys.stdin).get('d', '') or ''
+parts = d.split('|')
+print(f'  {parts[0].strip() if parts else \"\"}')
+if len(parts) > 1: print(f'  total: {parts[1].strip()}')
+"
+}
+
+cmd_categories() { asmx TreeWebService GetRootNodes '{"orgId":1}' | unwrap; }
+
+cmd_category() {
+  local node_id="${1:-}"; local page="${2:-1}"; local per=20
+  [ -n "$node_id" ] || { echo "kth wisum category: missing tree-node id" >&2; exit 2; }
+  local start=$(( (page - 1) * per ))
+  local body
+  body=$(python3 -c "import json; print(json.dumps({'treeNodeId': int('$node_id'), 'startIndex': $start, 'maximumRows': $per, 'sortExpressions': '', 'filterExpressions': ''}))")
+  asmx TreeWebService GetProductsForTreeNode "$body" | unwrap
+}
+
+cmd_favorites() {
+  asmx TreeWebService GetProductsByFavoriter '{"searchQuery":"","startIndex":0,"maximumRows":100,"sortExpressions":""}' | unwrap
+}
+
+cmd_add() {
+  local pid="${1:-}" qty="${2:-1}"
+  [ -n "$pid" ] || { echo "kth wisum add: missing supplier-product-id" >&2; exit 2; }
+  local body
+  body=$(python3 -c "import json; print(json.dumps({'supplierProductId': int('$pid'), 'quantity': int('$qty')}))")
+  echo "[kth-wisum] Adding product $pid (qty $qty) to active cart…" >&2
+  asmx TreeWebService AddToCart "$body" | unwrap
+  echo; cmd_cart
+}
+
+cmd_favorite() {
+  local pid="${1:-}"; [ -n "$pid" ] || { echo "kth wisum favorite: missing product id" >&2; exit 2; }
+  asmx TreeWebService SetProductsAsFavorit "$(python3 -c "import json; print(json.dumps({'produktId':[int('$pid')]}))")" | unwrap
+}
+
+cmd_unfavorite() {
+  local pid="${1:-}"; [ -n "$pid" ] || { echo "kth wisum unfavorite: missing product id" >&2; exit 2; }
+  asmx TreeWebService UnSetProductsAsFavorit "$(python3 -c "import json; print(json.dumps({'produktId':[int('$pid')]}))")" | unwrap
+}
+
+cmd_raw() {
+  local svc="${1:-}" method="${2:-}" body="${3-}"
+  [ -z "$body" ] && body='{}'
+  [ -n "$svc" ] && [ -n "$method" ] || { echo "kth wisum raw: <service> <method> [body]" >&2; exit 2; }
+  asmx "$svc" "$method" "$body"; echo
+}
+
+# =============================================================
+# CART MANAGEMENT — migrated to Chrome extension
+# =============================================================
+# These commands previously used agent-browser to drive the WISUM UI.
+# They are now stubs that direct the user/agent to use the Chrome
+# extension interactively. See skills/kth-wisum/SKILL.md for the
+# full interactive workflow.
+
+cmd_carts()       { _chrome_extension_required; }
+cmd_select()      { _chrome_extension_required; }
+cmd_cart_detail()  { _chrome_extension_required; }
+cmd_delete()      { _chrome_extension_required; }
+cmd_cleanup()     { _chrome_extension_required; }
+
+# =============================================================
+# CHECKOUT — migrated to Chrome extension
+# =============================================================
+# The checkout wizard (W2CheckOut.aspx) uses Telerik RadComboBox widgets
+# that require real DOM clicks. This is now driven interactively by the
+# agent via the Chrome extension's javascript_tool and computer tools.
+#
+# The CLI stubs below print guidance pointing to the SKILL.md workflow.
+# The curl-based `addresses` and `enheter` verbs could theoretically
+# remain, but they depend on the page being open in the browser to
+# populate the combobox first, so they are stubs too.
+
+cmd_addresses()   { _chrome_extension_required; }
+cmd_enheter()     { _chrome_extension_required; }
+cmd_checkout()    { _chrome_extension_required; }
+
+# =============================================================
+# Dispatch
+# =============================================================
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  # Read-only
+  search)       cmd_search "$@" ;;
+  cart)         cmd_cart ;;
+  categories)   cmd_categories ;;
+  category)     cmd_category "$@" ;;
+  favorites)    cmd_favorites ;;
+  raw)          cmd_raw "$@" ;;
+
+  # Light write
+  add)          cmd_add "$@" ;;
+  favorite)     cmd_favorite "$@" ;;
+  unfavorite)   cmd_unfavorite "$@" ;;
+
+  # Cart management (migrated to Chrome extension — stubs)
+  carts)        cmd_carts ;;
+  select)       cmd_select "$@" ;;
+  cart-detail)  cmd_cart_detail ;;
+  delete)       cmd_delete "$@" ;;
+  cleanup)      cmd_cleanup ;;
+
+  # Checkout (migrated to Chrome extension — stubs)
+  checkout)     cmd_checkout "$@" ;;
+  addresses)    cmd_addresses ;;
+  enheter)      cmd_enheter ;;
+
+  # Plumbing
+  refresh)      refresh_cookies ;;
+  open)         echo "[kth-wisum] Use the Chrome extension: navigate to $BASE/Default.aspx" >&2 ;;
+  help|-h|--help) usage ;;
+
+  *) echo "kth wisum: unknown command '$cmd'" >&2; echo >&2; usage >&2; exit 2 ;;
+esac

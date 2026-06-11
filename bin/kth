@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# kth — dispatcher for KTH service CLIs.
+#
+# Browser automation is handled by the Claude Chrome extension
+# (claude-in-chrome MCP), not by this script. This wrapper just
+# sources user config and dispatches to the per-service CLIs.
+set -euo pipefail
+
+# Resolve repo root via symlink-aware path walk
+__src="${BASH_SOURCE[0]}"
+while [ -L "$__src" ]; do
+  __target="$(readlink "$__src")"
+  case "$__target" in
+    /*) __src="$__target" ;;
+    *)  __src="$(cd "$(dirname "$__src")" && pwd)/$__target" ;;
+  esac
+done
+REPO_DIR="$(cd "$(dirname "$__src")/.." && pwd)"
+
+# Source user preferences if present.
+if [ -f "$HOME/.config/kth-cli/config.env" ]; then
+  # shellcheck disable=SC1091
+  . "$HOME/.config/kth-cli/config.env"
+fi
+
+usage() {
+  cat <<'EOF'
+Usage: kth <command> [args...]
+
+Service CLIs:
+  efh <args...>           Query KTH Unit4 EFH (e-invoice handling).
+                          See `kth efh help` for subcommands.
+  wisum <args...>         Search products + manage cart in KTH WISUM.
+                          See `kth wisum help` for subcommands.
+  findity <args...>       KTH travel-expense (Findity / Hogia).
+                          See `kth findity help` for subcommands.
+  receipts <args...>      Pull billing data from OpenAI / Anthropic Admin
+                          APIs and stage receipt PDFs for Findity upload.
+                          See `kth receipts help`.
+  canvas <args...>        Read / export KTH Canvas LMS (canvas.kth.se).
+                          See `kth canvas help` for subcommands.
+
+Browser automation:
+  All browser interactions (login, MFA, form filling, page navigation)
+  are handled by the Claude Chrome extension (claude-in-chrome MCP).
+  See skills/kth/SKILL.md for the login + session workflow.
+
+  help, -h, --help        Show this help.
+EOF
+}
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  efh)      exec "$(dirname "$0")/kth-efh" "$@" ;;
+  wisum)    exec "$(dirname "$0")/kth-wisum" "$@" ;;
+  findity)  exec "$(dirname "$0")/kth-findity" "$@" ;;
+  receipts) exec "$(dirname "$0")/kth-receipts" "$@" ;;
+  canvas)   exec "$(dirname "$0")/kth-canvas" "$@" ;;
+  help|-h|--help) usage ;;
+  *)
+    echo "kth: unknown command '$cmd'" >&2
+    echo >&2
+    usage >&2
+    exit 2
+    ;;
+esac

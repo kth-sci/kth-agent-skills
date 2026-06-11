@@ -1,0 +1,292 @@
+#!/usr/bin/env bash
+# kth-findity — KTH travel-expense (Findity / Hogia) CLI.
+#
+# Backend: https://hogia.findity.com/  (Findity SaaS, hosted via Hogia).
+# Auth:    OIDC bearer token. Findity federates through KTH AD FS
+#          (login.ug.kth.se, client_id e4569b19-…). The Flutter web app
+#          fetches the token via /api/oauth/token after the OIDC dance;
+#          we sniff the Authorization header from that request and reuse
+#          it for plain curl.
+#
+# Architecture:
+#   • READ verbs (me, reports, counters, expenses, organizations) are
+#     pure curl with the captured bearer.
+#   • REFRESH happens via the Chrome extension (claude-in-chrome MCP):
+#     the agent uses javascript_tool to intercept window.fetch and
+#     capture the Authorization header, then saves it to the bearer file.
+#
+# Token storage:
+#   ~/.config/kth-cli/.findity-bearer.txt   (mode 0600)
+#   or passed via env KTH_FINDITY_BEARER.
+set -euo pipefail
+
+# Resolve repo root via symlink-aware path walk
+__src="${BASH_SOURCE[0]}"
+while [ -L "$__src" ]; do
+  __target="$(readlink "$__src")"
+  case "$__target" in
+    /*) __src="$__target" ;;
+    *)  __src="$(cd "$(dirname "$__src")" && pwd)/$__target" ;;
+  esac
+done
+REPO_DIR="$(cd "$(dirname "$__src")/.." && pwd)"
+
+# Source user config
+if [ -f "$HOME/.config/kth-cli/config.env" ]; then
+  # shellcheck disable=SC1091
+  . "$HOME/.config/kth-cli/config.env"
+fi
+
+BEARER_FILE="${KTH_FINDITY_BEARER:-$HOME/.config/kth-cli/.findity-bearer.txt}"
+BASE='https://hogia.findity.com'
+
+usage() {
+  cat <<'EOF'
+Usage: kth findity <command> [args...]
+
+READ verbs (pure curl with captured bearer):
+  me                   Your Findity profile (name, email, prefs).
+  organizations        Organizations you belong to (typically KTH only).
+  counters             Notifications, inbox, approvals, transaction counts.
+  reports [--max N]    List your expense reports.
+  expenses [--max N]   List individual expenses.
+  history              Diagnose whether there are any past reports/expenses
+                       on this account, across all known statuses. Use
+                       before filing a new receipt to check for duplicates.
+  grep <text>          Search past expenses for matching vendor/description
+                       text (e.g. `kth findity grep openai`).
+  raw <path>           GET a raw API path (e.g. /api/v1/expense/me).
+
+Auth / plumbing:
+  bearer               Print the current bearer (for ad-hoc curl).
+
+  help, -h, --help     Show this help.
+
+Architecture: read = pure curl. The bearer is captured via the Chrome
+extension (claude-in-chrome MCP) and saved to
+~/.config/kth-cli/.findity-bearer.txt (or env KTH_FINDITY_BEARER).
+See skills/kth-findity/SKILL.md for the capture workflow.
+EOF
+}
+
+# require_bearer — ensure a bearer file is present, or exit with guidance.
+require_bearer() {
+  if [ -f "$BEARER_FILE" ]; then
+    return 0
+  fi
+  cat >&2 <<EOF
+[kth-findity] No bearer token found at $BEARER_FILE
+[kth-findity] The bearer is captured via the Chrome extension (claude-in-chrome MCP):
+[kth-findity]   1. Navigate to https://hogia.findity.com/app/ in Chrome.
+[kth-findity]   2. Use javascript_tool to intercept the Authorization header.
+[kth-findity]   3. Save the token to $BEARER_FILE (mode 0600).
+[kth-findity] Or set the env var KTH_FINDITY_BEARER to point to a file containing the token.
+EOF
+  exit 1
+}
+
+# curl helper — requires a valid bearer file.
+api() {
+  local path="$1"
+  require_bearer
+  local bearer http rsp
+  bearer="$(cat "$BEARER_FILE")"
+  http=$(curl -sS -o /tmp/kth-findity-body.$$ -w '%{http_code}' \
+    -H "Authorization: Bearer $bearer" \
+    -H 'Accept: application/json' \
+    "$BASE$path")
+  rsp="$(cat /tmp/kth-findity-body.$$ 2>/dev/null || true)"
+  rm -f /tmp/kth-findity-body.$$
+  if [ "$http" = "401" ] || [ "$http" = "403" ]; then
+    echo "[kth-findity] HTTP $http on $path — bearer expired or invalid." >&2
+    echo "[kth-findity] Refresh the bearer via the Chrome extension and save to $BEARER_FILE" >&2
+    exit 1
+  fi
+  if [ "$http" -ge 400 ]; then
+    echo "[kth-findity] HTTP $http on $path" >&2
+    echo "$rsp" >&2
+    exit 1
+  fi
+  printf '%s' "$rsp"
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Verbs
+# ─────────────────────────────────────────────────────────────────────
+
+cmd_me() { api '/api/v1/expense/me?include=meta.capabilities,properties' | python3 -m json.tool; }
+
+cmd_organizations() {
+  api '/api/v1/expense/me/organizations?include=design,meta.permissions,settings&max=100' | python3 -m json.tool
+}
+
+cmd_counters() {
+  api '/api/v1/expense/me/counters' | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+for org in d.get('data', []) or []:
+    org_id = org.get('organizationId', '?')
+    print(f'  org: {org_id}')
+    for k in ('notifications','transactions','inbox','approvals','rejections','expenses'):
+        v = org.get(k, 0)
+        print(f'    {k:14} {v}')
+"
+}
+
+# Resolve the active organisation id (cached after first lookup per
+# session). All /expensereports + /expenses endpoints require it.
+_resolve_org_id() {
+  if [ -n "${KTH_FINDITY_ORG:-}" ]; then
+    printf '%s' "$KTH_FINDITY_ORG"
+    return
+  fi
+  api '/api/v1/expense/me/organizations?max=1' \
+    | python3 -c "import json,sys; print((json.load(sys.stdin).get('data') or [{}])[0].get('id',''))"
+}
+
+cmd_reports() {
+  local max=20
+  while [ "$#" -gt 0 ]; do
+    case "$1" in --max) max="$2"; shift 2 ;; *) shift ;; esac
+  done
+  local org
+  org=$(_resolve_org_id)
+  [ -n "$org" ] || { echo "[kth-findity] no organisation id" >&2; exit 1; }
+  local inc='expenseRecords.meta.abbreviation,meta.abbreviation,meta.capabilities,expenseRecords.meta.capabilities'
+  api "/api/v1/expense/expensereports?organizationId=${org}&include=${inc}&max=${max}" \
+    | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+total = (d.get('meta') or {}).get('total', 0)
+arr = d.get('data') or []
+print(f'  total reports: {total}  (showing {len(arr)})')
+print()
+if not arr:
+    print('  (none)')
+for r in arr:
+    rid = r.get('id','?')
+    title = r.get('title') or r.get('description') or '<untitled>'
+    status = (r.get('status') or {}).get('name') or r.get('statusName') or '?'
+    amt = r.get('totalAmountFormatted') or r.get('totalAmount') or ''
+    print(f'  [{rid}] {title[:60]}  status={status}  {amt}')
+"
+}
+
+cmd_expenses() {
+  local max=20
+  while [ "$#" -gt 0 ]; do
+    case "$1" in --max) max="$2"; shift 2 ;; *) shift ;; esac
+  done
+  local org
+  org=$(_resolve_org_id)
+  [ -n "$org" ] || { echo "[kth-findity] no organisation id" >&2; exit 1; }
+  local inc='meta.abbreviation,meta.capabilities,meta.cardTransaction,meta.splits'
+  api "/api/v1/expense/expenses?organizationId=${org}&include=${inc}&max=${max}" | python3 -m json.tool | head -120
+}
+
+cmd_raw() {
+  local path="${1:-}"
+  [ -n "$path" ] || { echo "kth findity raw: <api-path>" >&2; exit 2; }
+  case "$path" in /*) ;; *) path="/$path" ;; esac
+  api "$path"
+  echo
+}
+
+cmd_bearer() { cat "$BEARER_FILE" 2>/dev/null; echo; }
+
+# Diagnose whether there's any historical activity in this Findity
+# account, across all known status filters. Useful before submitting a
+# new receipt to check for duplicates.
+cmd_history() {
+  local org
+  org=$(_resolve_org_id)
+  [ -n "$org" ] || { echo "[kth-findity] no organisation id" >&2; exit 1; }
+
+  echo "  org: $org"
+  echo
+  echo "  Expense reports by processStatus:"
+  for st in DRAFT REJECTED; do
+    body=$(api "/api/v1/expense/expensereports?organizationId=${org}&processStatus=${st}&max=1" 2>/dev/null)
+    total=$(printf '%s' "$body" | python3 -c "import json,sys;print(json.load(sys.stdin).get('meta',{}).get('total','?'))" 2>/dev/null || echo "?")
+    printf '    %-9s  total=%s\n' "$st" "$total"
+  done
+
+  body=$(api "/api/v1/expense/expensereports?organizationId=${org}&max=1" 2>/dev/null)
+  total=$(printf '%s' "$body" | python3 -c "import json,sys;print(json.load(sys.stdin).get('meta',{}).get('total','?'))" 2>/dev/null || echo "?")
+  printf '    %-9s  total=%s\n' "(no filter)" "$total"
+
+  echo
+  echo "  Individual expense line items (any status):"
+  body=$(api "/api/v1/expense/expenses?organizationId=${org}&max=1" 2>/dev/null)
+  total=$(printf '%s' "$body" | python3 -c "import json,sys;print(json.load(sys.stdin).get('meta',{}).get('total','?'))" 2>/dev/null || echo "?")
+  printf '    total=%s\n' "$total"
+
+  echo
+  echo "  Counters (notifications, inbox, approvals, …):"
+  cmd_counters
+
+  echo
+  cat <<'EOF'
+  Interpretation:
+    • If total=0 everywhere, this Findity account has no history. You
+      can safely file new receipts without risk of duplication.
+    • If the *current* view says 0 but you remember filing reports, they
+      were likely filed in a different system (KTH may have migrated to
+      Findity recently). Verify in the Findity UI at hogia.findity.com.
+    • Only DRAFT and REJECTED are valid processStatus values on this
+      endpoint — once a report is submitted/attested it leaves the
+      "current view" and the UI moves it to a separate archive view
+      that this CLI does not yet enumerate.
+EOF
+}
+
+# Search across all visible expenses for matching vendor/description
+# text. Useful for "have I already filed ChatGPT March 2026?".
+cmd_grep() {
+  local needle="${1:-}"
+  [ -n "$needle" ] || { echo "kth findity grep: <text>" >&2; exit 2; }
+  local org
+  org=$(_resolve_org_id)
+  [ -n "$org" ] || { echo "[kth-findity] no organisation id" >&2; exit 1; }
+  local inc='meta.abbreviation,meta.capabilities,meta.cardTransaction,meta.splits'
+  api "/api/v1/expense/expenses?organizationId=${org}&include=${inc}&max=1000" \
+    | python3 -c "
+import json, sys, re
+needle = sys.argv[1]
+d = json.load(sys.stdin)
+pat = re.compile(re.escape(needle), re.I)
+matches = []
+for e in d.get('data') or []:
+    desc = e.get('description') or e.get('title') or ''
+    vendor = (e.get('vendor') or {}).get('name') if isinstance(e.get('vendor'), dict) else (e.get('vendor') or '')
+    payee = e.get('payee') or ''
+    haystack = ' '.join(str(x) for x in (desc, vendor, payee, e.get('id','')))
+    if pat.search(haystack):
+        matches.append(e)
+if not matches:
+    print(f'  no expense matches \"{needle}\"')
+else:
+    print(f'  {len(matches)} match(es) for \"{needle}\":')
+    for e in matches:
+        date = (e.get('expenseDate') or e.get('date') or '?')[:10]
+        amt = e.get('totalAmountFormatted') or e.get('totalAmount') or ''
+        desc = e.get('description') or e.get('title') or ''
+        print(f'    [{e.get(\"id\")}]  {date}  {amt}  {desc[:70]}')
+" "$needle"
+}
+
+cmd="${1:-help}"
+shift || true
+case "$cmd" in
+  me)            cmd_me ;;
+  organizations) cmd_organizations ;;
+  counters)      cmd_counters ;;
+  reports)       cmd_reports "$@" ;;
+  expenses)      cmd_expenses "$@" ;;
+  history)       cmd_history ;;
+  grep|search)   cmd_grep "$@" ;;
+  raw)           cmd_raw "$@" ;;
+  bearer)        cmd_bearer ;;
+  help|-h|--help) usage ;;
+  *) echo "kth findity: unknown command '$cmd'" >&2; echo >&2; usage >&2; exit 2 ;;
+esac

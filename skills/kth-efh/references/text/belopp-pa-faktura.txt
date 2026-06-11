@@ -1,0 +1,15 @@
+Vi visar beloppsdelen
+av fakturan som vi
+har klickat på.
+Totalbelopp inkl. moms som
+  betalas till leverantören.
+                    Totalbelopp 471
+                    - Total moms 94,29
+                    = Tolkat nettobelopp 376,71
+Belopp som
+kommer att          Detta belopp är korrekt
+belasta projektet   Skillnaden beror på:
+                    Nettobelopp faktura 377,15
+                    + Öresavrundning -0,44
+                    = Tolkat nettobelopp 376,71
+

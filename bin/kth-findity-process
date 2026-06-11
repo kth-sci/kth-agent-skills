@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+"""kth-findity-process — post-upload PATCH automation for KTH-Expense.
+
+After the user uploads a receipt PDF via Findity's Browse-files UI, the SPA
+creates a DRAFT expense with an OCR'd date/amount but a generic description
+("Website analytics service") and no attached report. This script:
+
+  1. Polls /api/v1/expense/expenses for DRAFT expenses
+  2. For each one not in the target report, identifies the vendor by
+     cross-referencing the staged-submission manifest (date + amount match)
+  3. PUTs the expense to add a vendor-specific description and attach it
+     to the named report
+
+Usage:
+  kth-findity-process                          # process current drafts, exit
+  kth-findity-process --watch                  # poll every 5s, never exit
+  kth-findity-process --report-id <id>         # override report
+  kth-findity-process --dry-run                # show changes without PUTting
+"""
+import argparse, json, os, sys, time, urllib.request, urllib.error
+from datetime import datetime
+
+# ── Configurable via CLI flags or env vars (no hardcoded defaults) ────
+BEARER_PATH      = os.path.expanduser("~/.config/chrome-agent/.findity-bearer.txt")
+BASE             = "https://hogia.findity.com"
+
+# ── Vendor → description template + amount-tolerance ──────────────────
+# These templates intentionally stay general (per user's instruction
+# "keep general so it won't go wrong"). The receipt PDF itself is the
+# source of truth; the description tells the reviewer what the receipt
+# is and what it's for.
+VENDOR_TEMPLATES = {
+    "Matomo":      "Matomo website analytics subscription ({date_human}) — "
+                   "used to monitor research-website traffic for AICell Lab "
+                   "AI agent research.",
+    "Anthropic":   "Anthropic Claude API/Max-plan subscription ({date_human}) — "
+                   "used for AI agent research and development at AICell Lab.",
+    "OpenAI":      "OpenAI ChatGPT Plus / API usage credit ({date_human}) — "
+                   "used for LLM-powered AI agent experiments and prompt "
+                   "engineering research at AICell Lab.",
+    "Slack":       "Slack Pro plan for AICell Lab workspace ({date_human}) — "
+                   "used for research-team collaboration on AI agent development.",
+    "Cloudflare":  "Cloudflare hosting/security service ({date_human}) — "
+                   "used for AICell Lab research-project websites.",
+    "GoogleCloud": "Google Cloud Platform usage ({date_human}) — "
+                   "used for AI agent infrastructure and experiments at AICell Lab.",
+    "Gandi":       "Domain renewal ({date_human}) — AICell Lab research-project domain.",
+}
+
+# ── HTTP helpers ──────────────────────────────────────────────────────
+def _req(method, path, body=None):
+    bearer = open(BEARER_PATH).read().strip()
+    headers = {
+        "Authorization": f"Bearer {bearer}",
+        "Accept": "application/json",
+    }
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(BASE + path, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req) as r:
+            return r.status, json.loads(r.read().decode("utf-8") or "null")
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read().decode("utf-8") or "null")
+
+# ── Manifest cross-reference ──────────────────────────────────────────
+def load_manifest(manifest_path):
+    import glob
+    # If path contains a glob pattern, expand it and use the latest match
+    if '*' in manifest_path or '?' in manifest_path:
+        matches = sorted(glob.glob(manifest_path))
+        if not matches:
+            return []
+        manifest_path = matches[-1]
+    if not os.path.exists(manifest_path):
+        return []
+    return json.load(open(manifest_path))["receipts"]
+
+def _to_amount(s):
+    """'SEK 248.75' / '€180.00' / '$8.40' → (float, currency or None)."""
+    if not s: return None, None
+    import re
+    m = re.search(r"([A-Z]{3}|[€$£])\s*([\d.,]+)", s)
+    if not m: return None, None
+    cur = {"€":"EUR","$":"USD","£":"GBP"}.get(m.group(1), m.group(1))
+    amt = float(m.group(2).replace(",", "."))
+    return amt, cur
+
+def match_vendor(exp, manifest):
+    """Given an expense, find the matching manifest entry by date + amount."""
+    exp_date = (exp.get("expenseDate") or "")[:10]
+    v = exp.get("verification") or {}
+    exp_amount = float(v.get("amount") or 0)
+    exp_currency = v.get("currency", "")
+
+    for r in manifest:
+        if r["date"] != exp_date: continue
+        m_amount, m_cur = _to_amount(r.get("amount"))
+        if m_amount is None: continue
+        # Currency match (Findity expense currency is "SEK" but receipts
+        # may be EUR/USD — reimbursement is in SEK after FX). Match on
+        # absolute amount within tight tolerance.
+        if abs(m_amount - exp_amount) < 0.01:
+            return r
+        # Or match the SEK-converted amount (within 5% — FX can vary by day)
+        if exp_currency == "SEK" and m_cur in ("EUR","USD","GBP") and abs(m_amount * 11 - exp_amount) / max(exp_amount, 1) < 0.20:
+            return r
+    return None
+
+def make_description(receipt, exp):
+    """Build the vendor-specific description for an expense."""
+    vendor = receipt["vendor"]
+    template = VENDOR_TEMPLATES.get(vendor)
+    if not template:
+        # Fallback for unknown vendors
+        template = "{vendor} ({date_human}) — for AICell Lab research at KTH."
+        return template.format(vendor=vendor, date_human=receipt["date"])
+    date_obj = datetime.strptime(receipt["date"], "%Y-%m-%d")
+    date_human = date_obj.strftime("%B %Y")  # "June 2024"
+    return template.format(date_human=date_human)
+
+# ── Process a single expense ──────────────────────────────────────────
+def process_expense(exp, report_id, manifest, dry_run=False):
+    exp_id = exp["id"]
+    already_in_report = exp.get("expenseReportId") == report_id
+    receipt = match_vendor(exp, manifest)
+    if not receipt:
+        return ("skip-nomatch", f"no manifest match for date={(exp.get('expenseDate') or '')[:10]} amount={exp.get('verification',{}).get('amount')}")
+
+    new_desc = make_description(receipt, exp)
+    cur_desc = (exp.get("verification") or {}).get("description") or ""
+
+    # No-op if already done
+    if already_in_report and cur_desc == new_desc:
+        return ("skip-done", f"already processed: {receipt['vendor']} {receipt['date']}")
+
+    body = {
+        "id": exp_id,
+        "verification": {
+            "type": "ReceiptVerification",
+            "description": new_desc,
+        },
+        "expenseReportId": report_id,
+    }
+
+    if dry_run:
+        return ("dry-run", f"would PUT: {body}")
+
+    status, resp = _req("PUT", f"/api/v1/expense/expenses/{exp_id}", body)
+    if status == 200:
+        return ("updated", f"{receipt['vendor']} {receipt['date']} ({receipt.get('amount','?')}) → '{new_desc[:50]}…'")
+    else:
+        return ("error", f"HTTP {status}: {resp}")
+
+# ── Polling loop ──────────────────────────────────────────────────────
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--org-id", required=True, help="Findity organization ID (get from `kth findity organizations`)")
+    ap.add_argument("--report-id", required=True, help="Target report ID (get from `kth findity reports`)")
+    ap.add_argument("--manifest", default=os.path.expanduser("~/.cache/kth-receipts/staged-submission-*/files.json"),
+                     help="Path or glob to receipt manifest (default: ~/.cache/kth-receipts/staged-submission-*/files.json)")
+    ap.add_argument("--watch", action="store_true", help="poll every 5s")
+    ap.add_argument("--interval", type=int, default=5, help="poll interval seconds")
+    ap.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args()
+
+    if not os.path.exists(BEARER_PATH):
+        print(f"  ✗ no bearer at {BEARER_PATH}. Open Findity in chrome-agent and re-run.", file=sys.stderr)
+        sys.exit(2)
+
+    manifest = load_manifest(args.manifest)
+    print(f"  loaded {len(manifest)} receipts from manifest")
+    print(f"  target report: {args.report_id}")
+    if args.dry_run: print(f"  ── DRY RUN ──")
+
+    seen = set()
+    while True:
+        # Pull all DRAFT expenses (could be > org default; use a big max)
+        path = (f"/api/v1/expense/expenses?organizationId={args.org_id}&max=500"
+                "&include=verification")
+        status, data = _req("GET", path)
+        if status != 200:
+            print(f"  ✗ GET {path} → {status}: {data}", file=sys.stderr)
+            if args.watch:
+                time.sleep(args.interval); continue
+            sys.exit(2)
+
+        new_count = upd_count = err_count = skip_count = 0
+        for exp in (data.get("data") or []):
+            if exp.get("processStatus") != "DRAFT":
+                continue
+            kind, msg = process_expense(exp, args.report_id, manifest, dry_run=args.dry_run)
+            tag = exp["id"][:8]
+            if kind == "updated":
+                print(f"  ✓ [{tag}] {msg}"); upd_count += 1
+            elif kind in ("dry-run",):
+                print(f"  ◌ [{tag}] {msg}")
+            elif kind == "error":
+                print(f"  ✗ [{tag}] {msg}"); err_count += 1
+            elif kind == "skip-nomatch":
+                if exp["id"] not in seen:
+                    print(f"  ? [{tag}] {msg}")
+                    seen.add(exp["id"])
+                skip_count += 1
+
+        if not args.watch:
+            break
+        time.sleep(args.interval)
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,487 @@
+#!/usr/bin/env bash
+# kth-receipts — pull billing/usage data from OpenAI + Anthropic Admin APIs
+# and help shepherd Stripe-issued invoice PDFs into Findity expense reports.
+#
+# Architecture:
+#   • Admin API (pure curl):
+#       OpenAI    →  GET /v1/organization/costs        (per-day buckets, USD)
+#                    GET /v1/organization/usage/*      (token counters)
+#       Anthropic →  GET /v1/organizations/cost_report (per-day buckets, USD)
+#                    GET /v1/organizations/usage_report/messages
+#   • Invoice PDFs:
+#       Both providers' billing UIs link to Stripe-hosted PDFs (no API
+#       endpoint exposes them). PDFs come from the user's normal
+#       Chrome → ~/Downloads → the `kth receipts scan` verb stages
+#       them for upload to Findity.
+#
+# Configuration:
+#   ~/.config/kth-cli/secrets.env  (mode 0600) holds:
+#     KTH_OPENAI_KEY_1            for account 1 email
+#     KTH_OPENAI_KEY_2            for account 2 email
+#     KTH_ANTHROPIC_KEY_1         for account 1 email
+#     KTH_ANTHROPIC_KEY_2         for account 2 email
+set -euo pipefail
+
+# Resolve repo root via symlink-aware path walk so we work whether
+# called direct or via ~/.local/bin/kth-receipts symlink.
+__src="${BASH_SOURCE[0]}"
+while [ -L "$__src" ]; do
+  __target="$(readlink "$__src")"
+  case "$__target" in
+    /*) __src="$__target" ;;
+    *)  __src="$(cd "$(dirname "$__src")" && pwd)/$__target" ;;
+  esac
+done
+REPO_DIR="$(cd "$(dirname "$__src")/.." && pwd)"
+
+# Source user prefs + secrets. Both files are optional at load time —
+# specific verbs will error helpfully if a needed key is empty.
+[ -f "$HOME/.config/kth-cli/config.env"  ] && . "$HOME/.config/kth-cli/config.env"
+[ -f "$HOME/.config/kth-cli/secrets.env" ] && . "$HOME/.config/kth-cli/secrets.env"
+
+INBOX_DIR="${KTH_RECEIPTS_INBOX:-$HOME/.cache/kth-receipts/inbox}"
+
+usage() {
+  cat <<'EOF'
+Usage: kth receipts <command> [args...]
+
+Accounts (4 total, two providers × two Google accounts):
+  openai-oeway      OpenAI    (account 1 email)
+  openai-wei        OpenAI    (account 2 email)
+  anthropic-oeway   Anthropic (account 1 email)
+  anthropic-wei     Anthropic (account 2 email)
+
+Read verbs (pure curl, Admin API):
+  accounts                  List configured accounts + whether their key is set.
+  whoami <account>          Show org name + id for the given account.
+  costs   <account> [--month YYYY-MM | --days N]
+                            Per-day cost buckets in USD.
+  usage   <account> [--month YYYY-MM | --days N]
+                            Per-day usage counters.
+
+PDF staging (manual download → CLI upload):
+  scan    [folder]          Walk a folder (default ~/Downloads) for invoice
+                            PDFs (filename contains 'openai', 'anthropic',
+                            'claude', 'stripe', 'receipt', 'invoice'). Lists
+                            matches with detected date/amount and stages
+                            them in $INBOX_DIR.
+  list                      List staged PDFs in the inbox.
+  clean                     Delete staged PDFs from the inbox.
+
+Findity hand-off:
+  upload <pdf>              Forward a single PDF to `kth findity upload`.
+
+Notes:
+  • The Admin API does NOT expose invoice PDFs. It gives cost/usage data
+    only — useful for verifying the amounts on the Stripe-issued PDFs.
+  • Stripe-issued PDFs come from each provider's billing UI:
+        OpenAI:    platform.openai.com/settings/organization/billing/history
+        Anthropic: console.anthropic.com/settings/billing
+  • Sign into Google with the matching account in your normal Chrome,
+    click "Download invoice" for each month, then `kth receipts scan`.
+EOF
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Account resolution
+# ─────────────────────────────────────────────────────────────────────
+
+# Print "<provider>\t<key>" for the given account name, or error.
+# Reads via eval rather than ${!var} because callers may run under zsh.
+_resolve_account() {
+  local acct="${1:-}"
+  case "$acct" in
+    openai-oeway)    echo "openai"$'\t'"${KTH_OPENAI_KEY_OEWAY:-}" ;;
+    openai-wei)      echo "openai"$'\t'"${KTH_OPENAI_KEY_WEI:-}" ;;
+    anthropic-oeway) echo "anthropic"$'\t'"${KTH_ANTHROPIC_KEY_OEWAY:-}" ;;
+    anthropic-wei)   echo "anthropic"$'\t'"${KTH_ANTHROPIC_KEY_WEI:-}" ;;
+    *) return 1 ;;
+  esac
+}
+
+_require_key() {
+  local acct="$1" key="$2"
+  if [ -z "$key" ]; then
+    cat >&2 <<EOF
+[kth-receipts] No API key configured for '$acct'.
+[kth-receipts] Edit ~/.config/kth-cli/secrets.env and set the relevant
+[kth-receipts] KTH_*_KEY_* variable, then re-run.
+EOF
+    exit 2
+  fi
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Time-window resolution.
+# Parse --month YYYY-MM or --days N (default: --days 30).
+# Prints "<start_epoch>\t<end_epoch>" on stdout.
+# ─────────────────────────────────────────────────────────────────────
+_parse_window() {
+  local mode="days" arg="30"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --month) mode="month"; arg="$2"; shift 2 ;;
+      --days)  mode="days";  arg="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+
+  python3 - "$mode" "$arg" <<'PY'
+import sys, datetime, calendar
+mode, arg = sys.argv[1], sys.argv[2]
+if mode == "month":
+    y, m = map(int, arg.split("-"))
+    start = datetime.datetime(y, m, 1, tzinfo=datetime.timezone.utc)
+    last_day = calendar.monthrange(y, m)[1]
+    end = datetime.datetime(y, m, last_day, 23, 59, 59, tzinfo=datetime.timezone.utc)
+else:
+    end = datetime.datetime.now(datetime.timezone.utc)
+    start = end - datetime.timedelta(days=int(arg))
+print(f"{int(start.timestamp())}\t{int(end.timestamp())}")
+PY
+}
+
+_iso() { python3 -c "import sys,datetime; print(datetime.datetime.fromtimestamp(int(sys.argv[1]), datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))" "$1"; }
+
+# ─────────────────────────────────────────────────────────────────────
+# Verbs
+# ─────────────────────────────────────────────────────────────────────
+
+cmd_accounts() {
+  printf '%-18s  %-9s  %s\n' "ACCOUNT" "PROVIDER" "KEY"
+  for acct in openai-oeway openai-wei anthropic-oeway anthropic-wei; do
+    info="$(_resolve_account "$acct")"
+    provider="${info%%$'\t'*}"
+    key="${info#*$'\t'}"
+    if [ -n "$key" ]; then
+      printf '%-18s  %-9s  %s\n' "$acct" "$provider" "✓ set (${key:0:14}…)"
+    else
+      printf '%-18s  %-9s  %s\n' "$acct" "$provider" "⏳ empty — set in ~/.config/kth-cli/secrets.env"
+    fi
+  done
+}
+
+cmd_whoami() {
+  local acct="${1:-}"
+  [ -n "$acct" ] || { echo "kth receipts whoami: <account>" >&2; exit 2; }
+  local info provider key
+  info="$(_resolve_account "$acct")" || { echo "[kth-receipts] unknown account '$acct'" >&2; exit 2; }
+  provider="${info%%$'\t'*}"
+  key="${info#*$'\t'}"
+  _require_key "$acct" "$key"
+
+  case "$provider" in
+    openai)
+      echo "  provider:  OpenAI"
+      curl -sS -H "Authorization: Bearer $key" \
+        'https://api.openai.com/v1/organization/projects?limit=10' \
+        | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if 'error' in d:
+    print('  ✗', d['error'].get('message')); sys.exit(1)
+print(f'  projects:  {len(d.get(\"data\", []))}')
+for p in d.get('data', []):
+    print(f'    [{p[\"id\"]}] {p[\"name\"]}  (status={p[\"status\"]})')"
+      ;;
+    anthropic)
+      echo "  provider:  Anthropic"
+      curl -sS \
+        -H "x-api-key: $key" \
+        -H 'anthropic-version: 2023-06-01' \
+        'https://api.anthropic.com/v1/organizations/me' \
+        | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if d.get('type') != 'organization':
+    print('  ✗', d.get('error', d)); sys.exit(1)
+print(f'  org id:    {d[\"id\"]}')
+print(f'  org name:  {d[\"name\"]}')"
+      ;;
+  esac
+}
+
+# Common cost-summary formatter (both providers feed the same dict format).
+# Writes the python body to a tempfile so the heredoc doesn't compete with
+# the upstream curl pipe for python's stdin.
+_print_cost_summary() {
+  local tmp; tmp="$(mktemp /tmp/kth-receipts-py.XXXXXX)"
+  cat > "$tmp" <<'PY'
+import json, sys, datetime, collections
+account, provider = sys.argv[1], sys.argv[2]
+d = json.load(sys.stdin)
+buckets = d.get('data', [])
+
+total = 0.0
+currency = None
+per_day = collections.OrderedDict()
+
+for b in buckets:
+    # OpenAI shape:      b['results'] = [{'amount': {'value':…, 'currency':…}, 'project_id':…, …}]
+    # Anthropic shape:   b['results'] = [{'amount': '0.00', 'currency':…, 'cost_type':…, …}]
+    day_start = b.get('start_time') or b.get('starting_at')
+    if isinstance(day_start, int):
+        day = datetime.datetime.fromtimestamp(day_start, datetime.timezone.utc).date().isoformat()
+    elif isinstance(day_start, str):
+        day = day_start.split('T')[0]
+    else:
+        day = '?'
+    day_total = 0.0
+    for r in b.get('results') or []:
+        amt = r.get('amount')
+        if isinstance(amt, dict):
+            day_total += float(amt.get('value', 0) or 0)
+            currency = currency or amt.get('currency', 'USD')
+        elif isinstance(amt, (int, float, str)):
+            day_total += float(amt or 0)
+            currency = currency or r.get('currency', 'USD')
+    if day_total > 0:
+        per_day[day] = day_total
+        total += day_total
+
+print(f'  account:   {account}  ({provider})')
+print(f'  buckets:   {len(buckets)} day(s)  has_more={d.get("has_more", False)}')
+if not per_day:
+    print('  (no non-zero spend in this window)')
+else:
+    print(f'  total:     {total:,.4f} {currency or "USD"}')
+    print()
+    print('  per-day spend:')
+    for day, amt in per_day.items():
+        print(f'    {day}  {amt:>10,.4f} {currency}')
+PY
+  python3 "$tmp" "$@"
+  rm -f "$tmp"
+}
+
+cmd_costs() {
+  local acct="${1:-}"; shift || true
+  [ -n "$acct" ] || { echo "kth receipts costs: <account> [--month YYYY-MM | --days N]" >&2; exit 2; }
+  local info provider key
+  info="$(_resolve_account "$acct")" || { echo "[kth-receipts] unknown account '$acct'" >&2; exit 2; }
+  provider="${info%%$'\t'*}"
+  key="${info#*$'\t'}"
+  _require_key "$acct" "$key"
+
+  local window start end
+  window="$(_parse_window "$@")"
+  start="${window%%$'\t'*}"
+  end="${window##*$'\t'}"
+
+  case "$provider" in
+    openai)
+      curl -sS -H "Authorization: Bearer $key" \
+        "https://api.openai.com/v1/organization/costs?start_time=$start&end_time=$end&limit=180" \
+        | _print_cost_summary "$acct" "$provider"
+      ;;
+    anthropic)
+      curl -sS \
+        -H "x-api-key: $key" \
+        -H 'anthropic-version: 2023-06-01' \
+        "https://api.anthropic.com/v1/organizations/cost_report?starting_at=$(_iso "$start")&ending_at=$(_iso "$end")&limit=180" \
+        | _print_cost_summary "$acct" "$provider"
+      ;;
+  esac
+}
+
+cmd_usage() {
+  local acct="${1:-}"; shift || true
+  [ -n "$acct" ] || { echo "kth receipts usage: <account> [--month YYYY-MM | --days N]" >&2; exit 2; }
+  local info provider key
+  info="$(_resolve_account "$acct")" || { echo "[kth-receipts] unknown account '$acct'" >&2; exit 2; }
+  provider="${info%%$'\t'*}"
+  key="${info#*$'\t'}"
+  _require_key "$acct" "$key"
+
+  local window start end
+  window="$(_parse_window "$@")"
+  start="${window%%$'\t'*}"
+  end="${window##*$'\t'}"
+
+  case "$provider" in
+    openai)
+      echo "  account: $acct  (OpenAI)"
+      curl -sS -H "Authorization: Bearer $key" \
+        "https://api.openai.com/v1/organization/usage/completions?start_time=$start&end_time=$end&limit=180" \
+        | python3 -m json.tool | head -60
+      ;;
+    anthropic)
+      echo "  account: $acct  (Anthropic)"
+      curl -sS \
+        -H "x-api-key: $key" \
+        -H 'anthropic-version: 2023-06-01' \
+        "https://api.anthropic.com/v1/organizations/usage_report/messages?starting_at=$(_iso "$start")&ending_at=$(_iso "$end")&limit=180" \
+        | python3 -m json.tool | head -60
+      ;;
+  esac
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# PDF staging
+# ─────────────────────────────────────────────────────────────────────
+
+cmd_scan() {
+  local folder="${1:-$HOME/Downloads}"
+  [ -d "$folder" ] || { echo "[kth-receipts] not a folder: $folder" >&2; exit 2; }
+  mkdir -p "$INBOX_DIR"
+
+  python3 - "$folder" "$INBOX_DIR" <<'PY'
+import os, re, sys, shutil, subprocess
+folder, inbox = sys.argv[1], sys.argv[2]
+
+# Match invoices by filename keyword. Keep this conservative — we don't
+# want to grab the user's unrelated PDFs.
+KEYWORDS = re.compile(r'(openai|anthropic|claude|stripe|invoice|receipt|kvitto)', re.I)
+
+# Best-effort date/amount extraction.
+# Match only realistic YYYY-MM(-DD) — month in 01-12, day in 01-31 if
+# present. Stripe receipt IDs (Receipt-2013-8929-303) would otherwise
+# masquerade as dates.
+date_pat = re.compile(r'(?<!\d)(20\d{2})[-_.](0[1-9]|1[0-2])(?:[-_.](0[1-9]|[12]\d|3[01]))?(?!\d)')
+amt_pat  = re.compile(r'\$?(\d+\.\d{2})')
+
+def probe(path):
+    name = os.path.basename(path)
+    date = '?'
+    m = date_pat.search(name)
+    if m:
+        y, mo, d = m.group(1), m.group(2), (m.group(3) or '01')
+        date = f'{y}-{mo}-{d}'
+    # Try PDF mtime as a secondary date source when filename has none.
+    if date == '?':
+        try:
+            import datetime as _dt
+            mt = _dt.datetime.fromtimestamp(os.path.getmtime(path))
+            date = mt.strftime('%Y-%m-%d') + '*'   # trailing * = inferred from mtime
+        except Exception:
+            pass
+
+    amt = '?'
+    # Try pdftotext if available — much better signal than filename.
+    if shutil.which('pdftotext'):
+        try:
+            txt = subprocess.check_output(['pdftotext', '-l', '2', '-q', path, '-'],
+                                          stderr=subprocess.DEVNULL).decode('utf-8','ignore')
+            # Prefer 'Amount paid' or 'Total' lines.
+            for tag in ('amount paid', 'amount due', 'total paid', 'total'):
+                for line in txt.splitlines():
+                    if tag in line.lower():
+                        m = re.search(r'(?:US)?\$?\s?([\d,]+\.\d{2})', line)
+                        if m:
+                            amt = m.group(1).replace(',', '')
+                            break
+                if amt != '?':
+                    break
+            # Heuristic vendor hint from PDF body — looking for the
+            # provider name on page 1 so we know what kind of receipt this is.
+            vendors = []
+            txt_lc = txt.lower()
+            for v in ('openai', 'anthropic', 'claude', 'chatgpt', 'slack', 'stripe',
+                     'github', 'uber', 'taxi', 'aws'):
+                if v in txt_lc:
+                    vendors.append(v)
+            vendor_hint = ','.join(vendors[:2]) if vendors else '-'
+        except Exception:
+            vendor_hint = '-'
+    else:
+        vendor_hint = '-'
+    if amt == '?':
+        m = amt_pat.search(name)
+        if m:
+            amt = m.group(1)
+    return date, amt, vendor_hint
+
+matches = []
+for entry in sorted(os.listdir(folder)):
+    if not entry.lower().endswith('.pdf'):
+        continue
+    if not KEYWORDS.search(entry):
+        continue
+    src = os.path.join(folder, entry)
+    if not os.path.isfile(src):
+        continue
+    date, amt, vendor = probe(src)
+    matches.append((src, entry, date, amt, vendor))
+
+# Sort: dated entries (oldest → newest) first, undated last
+def _sort_key(t):
+    d = t[2]
+    return (d == '?', d.rstrip('*'))
+matches.sort(key=_sort_key)
+
+if not matches:
+    print(f'  no invoice-like PDFs in {folder}')
+    sys.exit(0)
+
+print(f'  found {len(matches)} candidate PDF(s) in {folder}:')
+print()
+print(f'  {"#":>3}  {"DATE":<11}  {"AMT":>10}  {"VENDOR":<18}  FILENAME')
+for i, (src, name, date, amt, vendor) in enumerate(matches, 1):
+    print(f'  {i:>3}  {date:<11}  {amt:>10}  {vendor:<18}  {name}')
+
+# Stage all of them into the inbox (copy, not move — so the user can
+# re-scan if needed). Skip if already staged with the same content.
+print()
+staged = 0
+for src, name, _, _, _ in matches:
+    dst = os.path.join(inbox, name)
+    if os.path.exists(dst):
+        # already staged
+        continue
+    shutil.copy2(src, dst)
+    staged += 1
+print(f'  staged {staged} new PDF(s) → {inbox}')
+PY
+}
+
+cmd_list() {
+  if [ ! -d "$INBOX_DIR" ]; then
+    echo "  inbox empty (no $INBOX_DIR yet)"
+    return
+  fi
+  local n=0
+  for f in "$INBOX_DIR"/*.pdf; do
+    [ -f "$f" ] || continue
+    n=$((n+1))
+    size=$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f")
+    printf '  %s  (%s bytes)\n' "$(basename "$f")" "$size"
+  done
+  if [ "$n" -eq 0 ]; then
+    echo "  inbox empty"
+  else
+    echo
+    echo "  total: $n PDF(s)  in  $INBOX_DIR"
+  fi
+}
+
+cmd_clean() {
+  if [ ! -d "$INBOX_DIR" ]; then
+    echo "  nothing to clean"
+    return
+  fi
+  rm -f "$INBOX_DIR"/*.pdf
+  echo "  cleaned $INBOX_DIR"
+}
+
+cmd_upload() {
+  local pdf="${1:-}"
+  [ -n "$pdf" ] || { echo "kth receipts upload: <pdf>" >&2; exit 2; }
+  [ -f "$pdf" ] || { echo "[kth-receipts] not a file: $pdf" >&2; exit 2; }
+  command -v kth >/dev/null 2>&1 || { echo "[kth-receipts] 'kth' not on PATH" >&2; exit 127; }
+  exec kth findity upload "$pdf"
+}
+
+cmd="${1:-help}"
+shift || true
+case "$cmd" in
+  accounts)       cmd_accounts ;;
+  whoami)         cmd_whoami "$@" ;;
+  costs)          cmd_costs "$@" ;;
+  usage)          cmd_usage "$@" ;;
+  scan)           cmd_scan "$@" ;;
+  list)           cmd_list ;;
+  clean)          cmd_clean ;;
+  upload)         cmd_upload "$@" ;;
+  help|-h|--help) usage ;;
+  *) echo "kth receipts: unknown command '$cmd'" >&2; echo >&2; usage >&2; exit 2 ;;
+esac

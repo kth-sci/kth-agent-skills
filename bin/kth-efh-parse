@@ -1,0 +1,343 @@
+#!/usr/bin/env python3
+"""Parse an EFH EI02 Faktura.htm into structured JSON + apply
+project-accounts.yaml rules. Reads:
+
+  argv[1]      path to EI02 HTML file (or set KTH_EFH_EI02 env var)
+  argv[2]      vernr (or set KTH_EFH_VERNR)
+  argv[3]      path to project-accounts.yaml (or KTH_EFH_PROJECT_ACCOUNTS)
+
+Robustness goals:
+  - Don't assume any specific line count or label position.
+  - Never let a known label slip in as a value.
+  - Survive missing fields (return null, don't crash).
+  - Work both for PEPPOL credit-card statements (many line items in a
+    flat table) and regular supplier invoices (one or two line items
+    with free-text descriptions).
+"""
+
+from __future__ import annotations
+
+import html
+import json
+import os
+import re
+import sys
+import time
+
+
+# Known Swedish labels — used to guard against labels being parsed as
+# values when label clusters precede value clusters (the totals block).
+LABELS: set[str] = {
+    'Fakturadatum', 'Fakturanummer', 'Valuta', 'Förfallodatum',
+    'Konteringsreferens', 'Beställarereferens', 'Kundens ordernummer',
+    'Leverantör', 'Kund', 'EndpointID', 'Partsidentitet',
+    'Organisationsnummer', 'Momsregnr.',
+    'Leverantörens kontaktinformation', 'Kundens kontaktinformation',
+    'Telefon', 'E-mail', 'Fakturameddelande',
+    'Rad', 'Produktnummer', 'Info', 'Kvantitet', 'Enhet', 'Enhetspris',
+    'Momsdetaljer', 'Rabatt/Avgift(Rad)', 'Radsumma', 'Beskrivning',
+    'Radinformation',
+    'Skatteinformation (Moms på fakturan)', 'Skattekategori',
+    'Undantagsorsak', 'Skattepliktigt belopp', 'Momsbelopp', 'VAT',
+    'Totalbelopp', 'Summa radbelopp', 'Belopp exkl. moms',
+    'Totalt momsbelopp', 'Belopp inkl. moms', 'Belopp att betala',
+    'Betalsätt', 'Betalkod', 'Betalvägskod', 'Kontonummer',
+    'Institution', 'Betalningsreferens/OCR',
+    'FAKTURA', 'PEPPOL BIS Billing 3.0 (compatible with BIS 5A 2.0)',
+}
+
+
+def parse_amount(s: str) -> float | None:
+    if not s:
+        return None
+    t = s.replace(' ', '').replace(' ', '')
+    if ',' in t and '.' not in t:
+        t = t.replace(',', '.')
+    elif ',' in t and '.' in t:
+        t = t.replace(',', '')
+    try:
+        return float(t)
+    except ValueError:
+        return None
+
+
+def is_date(s: str) -> bool:
+    return bool(s and re.match(r'^\d{4}-\d{2}-\d{2}$', s.strip()))
+
+
+def is_number_line(s: str) -> bool:
+    if not s or s in LABELS:
+        return False
+    return parse_amount(s) is not None and any(c.isdigit() for c in s)
+
+
+def stripped_lines(html_src: str) -> list[str]:
+    """Strip HTML to a list of stripped text lines (one per tag boundary)."""
+    clean = re.sub(r'<style[\s\S]*?</style>|<script[\s\S]*?</script>|<!--[\s\S]*?-->',
+                   '', html_src, flags=re.I)
+    flat = re.sub(r'<[^>]+>', '\n', clean)
+    flat = html.unescape(flat)
+    flat = re.sub(r'[ \t]+', ' ', flat)
+    return [ln.strip() for ln in flat.splitlines() if ln.strip()]
+
+
+def values_after(lines: list[str], label: str, span: int = 12) -> list[str]:
+    """Candidate values within `span` lines after each occurrence of label.
+    Lines that are themselves known labels are filtered out."""
+    out: list[str] = []
+    for i, ln in enumerate(lines):
+        if ln == label:
+            for j in range(i + 1, min(i + 1 + span, len(lines))):
+                v = lines[j]
+                if v in LABELS:
+                    continue
+                out.append(v)
+    return out
+
+
+def pick(lines: list[str], label: str, shape: str, span: int = 12):
+    """Pick the first candidate value matching `shape`."""
+    for v in values_after(lines, label, span):
+        if shape == 'date' and is_date(v):
+            return v
+        if shape == 'number' and is_number_line(v):
+            return v
+        if shape == 'text' and v:
+            return v
+    return None
+
+
+def block_starting_at(lines: list[str], label: str, max_len: int = 10) -> list[str]:
+    """Collect non-label lines after `label` until the next label."""
+    for i, ln in enumerate(lines):
+        if ln == label:
+            out: list[str] = []
+            for j in range(i + 1, min(i + 1 + max_len, len(lines))):
+                if lines[j] in LABELS:
+                    break
+                out.append(lines[j])
+            return out
+    return []
+
+
+def all_values_after(lines: list[str], label: str) -> list[str]:
+    """Every non-label line immediately after each occurrence of `label`."""
+    out: list[str] = []
+    for i, ln in enumerate(lines):
+        if ln == label and i + 1 < len(lines) and lines[i + 1] not in LABELS:
+            out.append(lines[i + 1])
+    return out
+
+
+def extract_line_items(lines: list[str]) -> list[dict]:
+    """Detect rows in the line-items table.
+
+    Tolerated layouts:
+      - PEPPOL credit-card statement: rows like
+        "<int> / <12-digit-product-id> / <NAME, CITY, CC> / … / <amount> / SEK"
+      - Regular supplier invoice: rows with a single item, free-text
+        description, smaller numbers.
+
+    Heuristic: integer line followed by a comma-bearing description with a
+    country-code suffix. Amount = the LAST "<number>\\nSEK" pair before the
+    next row marker, excluding the product-id value itself.
+    """
+    items: list[dict] = []
+    last_row = 0
+    i = 0
+    n = len(lines)
+    while i < n - 2:
+        if not re.fullmatch(r'\d{1,3}', lines[i]):
+            i += 1
+            continue
+        row = int(lines[i])
+        if row != last_row + 1:
+            i += 1
+            continue
+        if i + 2 >= n:
+            break
+        prod = lines[i + 1]
+        desc = lines[i + 2]
+        if (',' not in desc) or len(desc) > 200 or not re.search(r',\s*[A-Z]{2}$', desc):
+            i += 1
+            continue
+        amount = None
+        # Terminators that mean we've left the line-items table for the
+        # totals block (critical for the LAST row, which has no "row+1"
+        # marker to break on).
+        TERMINATORS = {
+            'Totalbelopp', 'Summa radbelopp', 'Belopp exkl. moms',
+            'Skatteinformation (Moms på fakturan)', 'Skattekategori',
+            'Belopp att betala', 'Betalsätt',
+        }
+        for j in range(i + 3, min(i + 80, n)):
+            # Stop on next row marker
+            if re.fullmatch(r'\d{1,3}', lines[j]) and int(lines[j]) == row + 1:
+                break
+            # Stop on totals-block marker
+            if lines[j] in TERMINATORS:
+                break
+            if lines[j] == 'SEK' and j > 0:
+                cand = parse_amount(lines[j - 1])
+                # Skip the product-id (which is itself numeric)
+                if cand is not None and cand > 0 and lines[j - 1] != prod:
+                    amount = cand  # last one wins → radsumma column
+        items.append({
+            'row': row,
+            'product_id': prod if re.fullmatch(r'\d{8,}', prod) else None,
+            'description': desc,
+            'amount_sek': amount,
+        })
+        last_row = row
+        i += 3
+    return items
+
+
+def detect_coi(lines: list[str]) -> list[dict]:
+    """Surface signals of conflict-of-interest (cardholder, supplier name match)."""
+    out: list[dict] = []
+    seen = set()
+    for ln in lines:
+        if 'Name on card' in ln:
+            m = re.search(r'Name on card:\s*([^,]+)', ln)
+            if m:
+                name = m.group(1).strip()
+                if name not in seen:
+                    out.append({'kind': 'cardholder', 'value': name})
+                    seen.add(name)
+    return out
+
+
+def load_accounts(path: str) -> dict | None:
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        import yaml  # type: ignore
+        return yaml.safe_load(open(path, encoding='utf-8'))
+    except Exception:
+        return None  # caller treats no-rules-loaded gracefully
+
+
+def match_rules(meta: dict, accounts: dict | None):
+    proposals: list[dict] = []
+    default: dict | None = None
+    if not accounts:
+        return proposals, default
+    searchable = ' '.join(filter(None, [
+        meta.get('supplier_name') or '',
+        ' '.join(meta.get('supplier_block') or []),
+        meta.get('accounting_reference') or '',
+        meta.get('orderer_reference') or '',
+        ' '.join((it.get('description') or '') for it in (meta.get('line_items') or [])),
+    ])).lower()
+    for rule in (accounts.get('rules') or []):
+        kws = rule.get('keywords') or []
+        match = next((kw for kw in kws if str(kw).lower() in searchable), None)
+        if match:
+            proposals.append({
+                'rule_id': rule.get('id'),
+                'project': rule.get('project'),
+                'cost_centre': rule.get('cost_centre'),
+                'label': rule.get('label'),
+                'matched_keyword': match,
+                'rationale': (rule.get('when') or '').strip().splitlines()[0] if rule.get('when') else '',
+            })
+    d = accounts.get('default') or {}
+    if d:
+        default = {
+            'rule_id': d.get('id'),
+            'project': d.get('project'),
+            'cost_centre': d.get('cost_centre'),
+            'label': d.get('label'),
+            'rationale': d.get('rationale') or 'No rule matched; using default.',
+        }
+    return proposals, default
+
+
+def draft_comment(meta: dict, proposals: list[dict], default: dict | None,
+                  coi: list[dict]) -> str:
+    rule_id = (proposals[0]['rule_id'] if proposals
+               else (default.get('rule_id') if default else 'unmatched'))
+    suppliers = sorted({(it.get('description') or '').split(',')[0].strip()
+                        for it in (meta.get('line_items') or []) if it.get('description')})
+    suppliers = [s for s in suppliers if s]
+    bits: list[str] = []
+    if meta.get('supplier_name'):
+        bits.append(meta['supplier_name'])
+    if suppliers and len(suppliers) <= 6:
+        bits.append('items: ' + ', '.join(suppliers))
+    elif suppliers:
+        bits.append(f"{len(suppliers)} merchants incl. " + ', '.join(suppliers[:4]))
+    for c in coi:
+        if c['kind'] == 'cardholder':
+            bits.append(f"cardholder: {c['value']}")
+    bits.append(f"(rule: {rule_id})")
+    return ' — '.join(bits)
+
+
+def main() -> int:
+    ei02_path = os.environ.get('KTH_EFH_EI02') or (sys.argv[1] if len(sys.argv) > 1 else None)
+    vernr     = os.environ.get('KTH_EFH_VERNR') or (sys.argv[2] if len(sys.argv) > 2 else '')
+    accounts_path = (os.environ.get('KTH_EFH_PROJECT_ACCOUNTS')
+                     or (sys.argv[3] if len(sys.argv) > 3 else ''))
+    if not ei02_path or not os.path.exists(ei02_path):
+        print(f"kth-efh-parse: EI02 path missing or not found: {ei02_path}", file=sys.stderr)
+        return 2
+
+    src = open(ei02_path, encoding='utf-8', errors='replace').read()
+    lines = stripped_lines(src)
+
+    meta: dict = {'vernr': vernr, 'parsed_at_unix': int(time.time())}
+    SIMPLE = [
+        ('Fakturadatum',       'invoice_date',         'date'),
+        ('Förfallodatum',      'due_date',             'date'),
+        ('Fakturanummer',      'invoice_number',       'text'),
+        ('Valuta',             'currency',             'text'),
+        ('Konteringsreferens', 'accounting_reference', 'text'),
+        ('Beställarereferens', 'orderer_reference',    'text'),
+        ('Kundens ordernummer','customer_order_number','text'),
+        ('Betalningsreferens/OCR', 'payment_reference','text'),
+        ('Kontonummer',        'bank_account',         'text'),
+        ('Summa radbelopp',    'line_sum',             'number'),
+        ('Belopp exkl. moms',  'amount_excl_vat',      'number'),
+        ('Totalt momsbelopp',  'vat_amount',           'number'),
+        ('Belopp inkl. moms',  'amount_incl_vat',      'number'),
+        ('Belopp att betala',  'amount_due',           'number'),
+    ]
+    for label, key, shape in SIMPLE:
+        v = pick(lines, label, shape)
+        if v is None:
+            continue
+        meta[key] = parse_amount(v) if shape == 'number' else v
+
+    meta['supplier_block'] = block_starting_at(lines, 'Leverantör')
+    meta['customer_block'] = block_starting_at(lines, 'Kund')
+    meta['supplier_name']  = meta['supplier_block'][0] if meta['supplier_block'] else None
+    meta['customer_name']  = meta['customer_block'][0] if meta['customer_block'] else None
+    meta['org_numbers']    = all_values_after(lines, 'Organisationsnummer')
+    meta['vat_numbers']    = all_values_after(lines, 'Momsregnr.')
+
+    items = extract_line_items(lines)
+    meta['line_items']       = items
+    meta['line_item_count']  = len(items)
+
+    accounts = load_accounts(accounts_path)
+    proposals, default = match_rules(meta, accounts)
+    coi = detect_coi(lines)
+    comment = draft_comment(meta, proposals, default, coi)
+
+    result = {
+        'vernr': vernr,
+        'invoice': meta,
+        'proposed_projects': proposals,
+        'default_project': default,
+        'coi_flags': coi,
+        'comment_draft': comment,
+        'ei02_file': ei02_path,
+    }
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

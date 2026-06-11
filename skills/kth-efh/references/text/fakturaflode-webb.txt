@@ -1,0 +1,58 @@
+                                             SAKATTESTANT kontrollerar leverans                         EKONOM sätter baskonto,                      EKONOMISK ATTESTANT
+                                             och pris Sätter Proj. Om ej ändrar proj, så                lägger upp anläggnings-                      kontrollerar faktura och att
+                                             kommer fakturan åter till sakattestant.                    tillgångar mm.                               rätt kostnadsställe belastas.
+
+                                                       SAKATTEST
+                                 KTH.se                                                                       EKONOM                                      EKONOMISK                   Definitiv-
+                                                        Ange Proj                          Org                                               Org
+                                anv.namn                                          Ej bytt                    Ange Konto              Ej bytt konto          ATTEST                    bokföring
+                                                        (ger Org)
+                                                                                dummy-proj                                             el. E/I-fel
+
+            Flöde fram och parkera                                                                                                                                       Avancerat läge extra val
+
+
+                                                                                                                                                                      AVANCERAT LÄGE - Används för att
+           SAKATTESTERA / KONTERA                                                                                                                                     komma åt extra funktionen Dela upp
+           / EKONOMISK ATTEST -                                                                                                                                       raden och tillhörande knappar.
+           Godkännande beroende på steg i                                                                                                                             För ekonomisk attestant saknar
+                                                                                                                 SLIPS                                                denna knapp betydelse.
+           processen. Fakturan flödar vidare
+           till nästa steg.                                                                                                                                           Nedanstående knappar finns endast
+                                                                                                      SLIPS (Skolans fakturaövervakare) –                             i Avancerat läge:
+                                                                                                      Se knapp Felaktig faktura.
+            VIDAREBEFORDRA - Lägg till
+            person som får faktura inom steget.                                                                                                                       DELA UPP RADEN – Delar upp rad i
+            Ex när sakattestant vidarebefordrar
+                                                                                                 Felhantering (Flöde bakåt)                                           ytterligare rad om faktura skall delas på
+            till annan blir den då ny sakattestant.                                                                                                                   flera Proj el. Konto. Belopp måste
+            (Det går ej som sakattestant att                                                                                                                          därefter ändras.
+            skicka till ekonom, dvs ett annat                                                                                                                         TA BORT - Används endast till att ta bort
+            steg i processen.)                                                                    ÅTER EKONOM /                                                       rader som skapats med hjälp av Dela upp
+                                                                                                  ÅTER SAKATTESTANT -                                                 raden.
+                                                                                                  Åter till tidigare steg beroende
+                                                                                                  på om satt fel proj/konto,
+            ESKALERA – Om ekonomisk
+                                                                                                  ej bifogat information osv.                                          Ångra – Återställer/blankar åtgärd så att
+            attestant själv medverkat vid ex
+                                                                                                  Kommentar måste skrivas in.                                          annan åtgärd kan väljas innan man
+            representation. Faktura flödar då
+            till definierad arbetsledare.                                                                                                                              sparar.
+
+                                                                                                  FELAKTIG FAKTURA – Faktura tillhör
+            PARKERA - Sätter faktura i                                                            ej Skolan, Belopp eller annan info
+            ”vänte-läge”. Används om något                                                        felaktigt tolkat vid skanning. Faktura
+            måste utredas eller om väntar                                                         går då till skolans fakturaövervakare
+            på kreditfaktura.                                                                     (SLIPS) som tar bort fakturan eller
+                                                                                                  startar om flödet från början genom
+                                                                                                  att skicka den till sakattestant.
+Åtgärder tillgängliga för SAKATTESTANT Normalläge. Avancerat läge ger möjlighet
+                                                                                                  Kommentar måste skrivas in.
+att dela rader. Se ruta Avancerat läge extra val.                                                                                                                      SPARA – I avancerat läge måste alla
+                                                                                                                                                                       rader bockas i och därefter väljs spara
+                                                                                                                                                                       för att åtgärder ska utföras.
+Åtgärder tillgängliga för EKONOM i Normalläge. Avancerat läge ger möjlighet att dela rader. Se ruta Avancerat läge extra val.
+
+
+Åtgärder tillgängliga för EKONOMISK ATTESTANT i Normalläge (Avancerat läge ger ej extra funktionalitet.)
+

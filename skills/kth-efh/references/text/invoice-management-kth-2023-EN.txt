@@ -1,0 +1,700 @@
+Invoice Management
+       at KTH
+A summary regarding responsibilities and
+ management in the EFH invoice system
+
+
+              EKONOMI - 2019
+
+
+
+
+                                           0 (23)
+Table of Contents
+1     Division of responsibilities and authority .............................................................................................. 3
+    1.1       An invoice’s path to payment ........................................................................................................ 3
+    1.2       Responsibilities of the approver .................................................................................................... 3
+    1.3       Responsibilities of the financial approver .................................................................................... 4
+    1.4       Order reference .............................................................................................................................. 4
+    1.5       Invoice approval ............................................................................................................................. 4
+      1.5.1       Possible conflict of interest ........................................................................................................ 5
+    1.6       Attachments.................................................................................................................................... 5
+      1.6.1       Food and drink ........................................................................................................................... 5
+      1.6.2       Travel .......................................................................................................................................... 6
+      1.6.3       Conference .................................................................................................................................. 6
+      1.6.4       Consultancy services .................................................................................................................. 6
+      1.6.5       Eurocard ..................................................................................................................................... 6
+2     System information ................................................................................................................................. 7
+    2.1       Requirements ................................................................................................................................. 7
+      2.1.1       E-mail ......................................................................................................................................... 7
+      2.1.2       Login ........................................................................................................................................... 7
+    2.2       Approval in the system................................................................................................................... 8
+      2.2.1       Different action alternatives for an approver ......................................................................... 12
+    2.3       Financial approval in the system ................................................................................................. 13
+      2.3.1       Different action alternatives for a financial approver. ........................................................... 14
+    2.4       Append an attachment ................................................................................................................. 14
+    2.5       Open attachment .......................................................................................................................... 15
+    2.6       Activate a replacement ................................................................................................................. 16
+    2.7       Find invoice .................................................................................................................................. 18
+    2.8       Contact details .............................................................................................................................. 23
+
+
+
+
+                                                                                                                                                              1 (23)
+Purpose and summary
+
+
+The purpose of this document is to provide information about invoice management and an invoice’s
+path to payment at KTH. The document is divided into two parts; responsibilities and system
+information. The first part outlines your responsibilities as approver and financial approver, while the
+second part practically deals with procedures in the invoice system, which is called EFH.
+
+Approver:
+
+    •   An approver (sakattestant) is KTH’s name for a person who can verify that a purchase/order
+        has been completed according to KTH’s purchasing and procurement procedures, that the
+        invoice corresponds to what was agreed, and that the service/product has been delivered.
+
+    •   An approver shall:
+         Check that the invoice is correct
+         Specify the project that will pay the invoice
+         Indicate the purpose of the purchase
+         Attach relevant documents
+         Refer to relevant agreements/reference numbers
+
+    •   If the invoice is incorrect or deviates from what was agreed, the approver shall contact the
+        supplier and request a credit note as well as a new correct invoice.
+
+
+Financial approver:
+
+    •   A financial approver (ekonomisk attestant) is often the person who is responsible for the
+        budget and who assumes primary responsibility for payment of the invoice.
+
+    •   A financial approver shall:
+         Check that the invoice is correct
+         Check that the approver has specified the correct project to pay the invoice
+         Approve the invoice for final payment
+
+    •   The Dean of School delegates responsibility to a financial approver.
+
+Remember to activate your replacement if you are absent and cannot handle your incoming invoices.
+
+An approver may not approve an invoice from a company where there is a personal link or association,
+as a conflict of interest has therefore arisen. If such a situation arises, contact your immediate
+supervisor.
+
+
+
+
+                                                                                                       2 (23)
+1     Division of responsibilities and authority
+
+Before a purchase/order is carried out at KTH, it is important that the budget manager has given the
+purchaser/ordering party the authority to carry out the purchase. It is often this purchaser who is then
+the approver, and the budget manager who is the financial approver in the invoice process.
+
+1.1    An invoice’s path to payment
+In order for an invoice to be paid, it must “flow” through KTH’s electronic invoice system, EFH. The
+first person who receives the invoice in the approval flow is called an approver, and this person verifies
+that the ordered product/service has been delivered and that everything corresponds to what was
+agreed.
+
+The invoice is then handled by a bookkeeper, who writes the text for the posting and selects the correct
+account for the cost to be posted. The last approval step in the flow is the financial approver, who
+approves the purchase and the transfer of payment from KTH. As soon as the financial approver has
+approved the invoice the cost becomes visible on the project at the same time as the invoice will be sent
+to the bank for payment.
+
+
+
+
+Figure 1 Approval flow for an invoice
+
+The Interest Act is applied at KTH. It states that the due date shall be 30 days after the invoice has been
+sent (normally counted from the date the invoice was produced). If a shorter credit period has been
+agreed, the approver shall take responsibility for the invoice being paid within the given time frame.
+Terms that have been unilaterally included in the invoice by the supplier, e.g. invoicing fee, are not
+binding for KTH. For an invoice to be paid on time, it is important that all parties involved in the flow
+process the invoice promptly.
+
+1.2    Responsibilities of the approver
+An approver is the person who shall verify that an order is correct. By approving the invoice in the
+system, the approver verifies that the invoice corresponds with what was agreed/quoted and that KTH
+has received what was ordered.
+
+The role of approver is the first of four steps in the invoice flow. The approver is responsible for the
+purchase being done according to KTH’s procedures for “purchasing and procurement” and for the
+invoice corresponding to what was agreed. It is also the responsibility of the approver to ensure that the
+correct attachments are appended. Contact your immediate supervisor to become an authorised
+approver.
+
+For more information on purchasing and procurement, see
+https://intra.kth.se/en/administration/upphandling
+
+
+
+
+                                                                                                      3 (23)
+1.3       Responsibilities of the financial approver
+A financial approver is often the person responsible for the budget and thus the person who can decide
+that a purchase may be carried out. Approval by a financial approver therefore entails certifying that
+the purchase has been carried out correctly and that KTH/the project shall pay for the purchase. The
+authority of the financial approver is governed by the organisational unit, and the Dean of
+School/University Director delegates authorisation rights within their organisation.
+
+
+1.4       Order reference
+When purchasing/ordering, always specify an invoice reference. At KTH we have the following
+structure: EXAMPLE KTHXXX. Where EXAMPLE shall be replaced with the username/KTHID of the
+ordering party within KTH.
+
+KTH primarily receives e-invoices and we are visible via PEPPOL’s network. If for some reason the
+supplier cannot send an e-invoice, more information about billing options are found on our website.
+
+
+1.5       Invoice approval
+When an invoice is approved, this means that the following points are verified:
+
+      •    The product/service has been delivered in the correct quantity and is satisfactory
+      •    Invoice verification is complete, which means that payment terms, price, amount on the invoice
+           and delivery date are consistent with the order
+      •    The invoice is supplemented with complete attachments that confirm the purchase. For
+           example, if the invoice relates to food and drink, a participant list and taxation of benefits form
+           are to be attached. For more information, see the separate paragraph on attachments. Forms
+           can be found in the form archive
+      •    Regarding consultancy services, a reference number or agreement is to be attached to confirm
+           that the payment is correct.
+
+
+
+
+                                                                                                          4 (23)
+1.5.1     Possible conflict of interest
+As approver, you may not approve an invoice from a counterparty that you in some way have a personal
+connection or association with. The same applies if an invoice is linked to some relative. If one of these
+situations arises, it means that you are disqualified and the invoice shall be forwarded to your
+immediate supervisor.
+
+According to the Administrative Procedure Act (SFS1986:233), a conflict of interest arises, inter alia, if:
+   • The matter concerns the person themselves/a spouse/parent/child/sibling/other relative - the
+       person themselves or some relative is deputy for the person the matter concerns
+   • There is otherwise a circumstance which is likely to compromise confidence in impartiality
+
+1.6     Attachments
+Certain invoices must be supplemented with supporting documentation in cases where the invoice does
+not contain sufficient information. It is important that all documentation in Agresso is correct and
+complete. It is the responsibility of the approver to ensure that the invoice has correct attachments and
+that all relevant information is included. If some information is missing, a bookkeeper will return the
+invoice to the approver in EFH for completion.
+
+The following types of invoice require specific supporting documentation as attachments:
+    • Food and drink
+   • Travel
+   • Conference
+   • Consultancy services
+   • Eurocard
+
+1.6.1     Food and drink
+All invoices that relate to food and drink, regardless of whether it is internal/external representation, a
+conference or work meal, a participant list must by attached that includes both the purpose and all the
+participants’ names.
+
+KTH’s guidelines for entertainment expenses are found here.
+
+If it relates to external representation, it must also include the name of the organisation/ company that
+the guest represents. The form for representation 1 is found in the form archive. Civic registration
+numbers only need to be entered if internal participants shall be subject to benefit taxation - it is
+important that all relevant information is included, i.e. purpose, participant’s name, organisational
+affiliation and date. Remember not to provide sensitive personal data that can be linked to an
+individual on the participant list, as this may not be stored in the accounting system according to the
+GDPR.
+
+If the purchase relates to light refreshments or coffee for internal participants and it is an identifiable
+group, a full participant list does not have to be attached, rather it is enough to write, e.g. “light
+refreshments at monthly meeting, entire Finance, 20/08/2018” in the comment field.
+
+1.6.1.1    Taxation of benefits
+The basic rule according to the Swedish Tax Agency is that free meals that are not representation shall
+always be subject to benefit taxation. The reason for this is that meals are private living expenses that
+
+1 A participant list form for entertainment expenses is found here:
+
+https://intra.kth.se/administration/blanketter/personal-lon-anstallning
+
+                                                                                                         5 (23)
+are to be paid by the employees themselves. When KTH pays for meals at work meetings or planning
+meetings, this entails the taxation of benefits for free food for the employee as well as employer’s
+contribution for KTH. If the employee does not report a meal with a travel expenses claim as
+supporting documentation, the form Representation/kostförmån 2 must be filled in and attached to the
+supplier invoice. A copy of the form shall be submitted/sent by the approver according to school-
+specific procedures for handling in the payroll system.
+
+1.6.2   Travel
+A travel invoice shall also be supplemented with a clear purpose. By stating the purpose of the trip, it is
+clear what the travel relates to and therefore why KTH is to pay for the trip. Examples of purpose can
+include study trip, research trip, meeting in EU project, etc. The purpose is to be entered in the
+comment field. See more information under the system section.
+
+1.6.3   Conference
+Invoices that relate to a conference (both internal and external conferences), a participant list and
+programme/agenda and purpose are always to be attached.
+
+1.6.4   Consultancy services
+With invoices that relate to the purchase of consultancy services, it shall clearly be stated that the
+invoice corresponds to the agreed price and the scope of the assignment. The meaning of the
+consultancy assignment shall also be stated. The approver is responsible for the agreement being
+attached to the invoice, or for reference to the agreement’s reference number being entered in the
+comment field.
+
+1.6.5   Eurocard
+For purchases with Eurocard, all receipts are to be attached to the invoice. The receipts shall be
+numbered so that the items on the invoice can clearly be linked to the respective receipt, scanned and
+then attach to the invoice. All original receipts shall be saved.
+
+The procedure is as follows for the handling of receipts:
+    •   Tape the original receipts to a blank sheet of A4 paper - use age-resistant tape, do not staple.
+    •   Take copies of the originals and scan these in PDF format.
+    •   Name the file Appendix to “ver. 800XXXXX” and append it as an attachment to the EFH
+        invoice.
+    •   Then submit the original receipts to the bookkeeper at the School’s finance department.
+
+If a receipt is missing, the person is to write a clear explanation and sign it, and their immediate
+supervisor is to approve the supporting documentation before scanning.
+
+
+
+
+2 A food allowance form is found here: https://intra.kth.se/administration/blanketter/personal-lon-
+
+anstallning
+
+                                                                                                         6 (23)
+2     System information
+
+An invoice is approved in KTH’s electronic invoice management system, EFH. EFH works best on your
+computer in a newer edition 3 browser.
+
+2.1     Requirements
+The browser is to be set to allow pop-ups from kth.se pages. The size per attachment can be up to 5 MB.
+Username is specified with UG\Your_user_name.
+
+If you have forgotten your KTH password, which is the same for e.g. web mail, you can go to
+https://login.kth.se/changePassword.jsp and change password. If the user does not use their @kth.se
+e-mail address, a Forward address is to be registered on the intranet.
+
+2.1.1    E-mail
+When you as approver have an invoice to process, an e-mail will be sent to your kth.se mail. It is
+important that you ensure you can read these e-mails.
+
+2.1.2    Login
+When you receive an e-mail indicating that you have invoices to process, click on the link in the mail to
+open the invoice portal. If you are not automatically logged in, you have to enter UG\ before your kth.se
+username, e.g. UG\BRITTH, and enter a password. If you have a problem logging in, you may need to
+change your password. See more under requirements.
+
+
+
+
+You can also find EFH via kth.se under Services, or by searching at https://agresso.ug.kth.se
+
+
+
+
+3 Firefox or Crome are best for invoice management in our opinion.
+
+
+
+                                                                                                     7 (23)
+2.2   Approval in the system
+When you have tasks to manage in Agresso, the task icon at the top right is lit, and also shows the
+number of invoices to approve. Click on the icon.
+
+
+
+
+In the task list there is one invoice that requires the attention of the financial approver and 19
+that need the approver’s approval. To begin the approval process, click on Approve
+[Sakattestera] in the task list, after which the image Approve supplier’s invoice [Attest
+leverantörsfaktura] opens.
+
+
+
+
+                                                                                                      8 (23)
+Here is a list of the invoices that needs to be managed (the same principle applies for invoices
+processed by the financial approver). At the top of the page is a drop down list for sorting the invoices.
+Beside this is an arrow, which minimises/maximises the task list. In minimised mode, more space is
+given for other information and a clearer overview. If you have many invoices, sort them by due date to
+take the oldest first.
+
+
+
+
+                                                                                                      9 (23)
+At the top of the page there is also a symbol with an i, which gives a short instruction about what you
+are expected to do in the next step.
+
+
+
+
+The approval view can be divided into three areas; invoice information (1), log/comment field (2) and
+details for the approver (3). Information on each area is provided below.
+
+1. Information on supplier’s invoice
+Here you will see general information about the invoice. Supplier, due date, currency, total amount and
+the amount to approve (net amount), i.e. the total amount minus VAT.
+
+Here you have to check that everything is in line with what was agreed and delivered, but also that the
+invoice image corresponds to what is presented in the area.
+
+2. Log workflow
+Here you can view previous comments and write information for others in the flow. Here, the approver
+is to specify the purpose and what the purchase refers to, as it is important to clarify why KTH is to pay
+the invoice. If the invoice relates to a travel expense, the destination and date are also to be specified in
+addition to the purpose. A clear purpose and explanation of what the purchase refers to makes it easier
+for the bookkeeper to choose a suitable account for posting.
+
+The action in the comment field that is first in chronological order shows who has uploaded the invoice
+files; this person has nothing to do with the approval flow.
+
+3. Details of supplier’s invoice
+The first symbol in the area shows the invoice’s workflow; if you click on this you can see who had the
+invoice previously. If the invoice has been split across different projects or accounts, there will be
+several lines; in these cases a workflow is created per line.
+
+As approver you must specify a project, under the field Proj. As a financial approver, you must check
+the invoice and ensure the correct project has been selected.
+
+
+
+
+                                                                                                       10 (23)
+To get more information on the invoice, click on the invoice image. It looks slightly different depending
+on whether the invoice has been received in paper form or as an e-invoice.
+
+Paper invoice
+If an incoming invoice is in paper form, you can click directly on the invoice image to check the invoice.
+
+
+
+
+A new window opens as shown below. For multi-page invoices, you can scroll with the arrows here.
+
+
+
+
+If you want to print out all pages of this invoice, select print preview and then print. All pages
+including voucher details and coding are then printed. If you do not want to print all details but only
+the actual invoice image, simply zoom in on the invoice image, right click and print. If it is a multi-page
+invoice, this must be done for each page.
+
+
+Electronic invoice
+KTH receives electronic invoices in html format. Click on the invoice image to bring it up in a new
+window. If you want to print the invoice with voucher details, click on printout [utskrift] directly before
+you have opened up the image, then click print. To only print the invoice, first select save [spara] to
+open up the invoice in another window, then click print.
+
+
+
+
+                                                                                                     11 (23)
+2.2.1   Different action alternatives for an approver
+Alternative one – The invoice is paid by one project
+Enter the project that will pay the invoice. Use the tab key to navigate in the coding string. Enter the
+purpose and what the invoice relates to in the comment field. If everything looks right after the checks,
+click on approve [sakattestera].
+
+Alternative two – The invoice is paid by at least two projects
+If you want to split the cost between projects, enter one of the projects in the appropriate box
+and write clearly in the comment field (aside from purpose, what the invoice relates to) which
+projects the invoice is to be divided between and how much is to be paid by each project. The
+bookkeeper splits the invoice in the following step.
+
+Alternative three – The invoice is incorrect
+There are many different reasons for why an invoice may be incorrect. It may, for example, be that the
+amount does not match the agreed sum or that the invoice was not meant for you. Depending on the
+error, there are different approaches.
+
+If the invoice is meant for another school or person, select incorrect invoice [felaktig faktura]
+and write a comment in the field that comes up. The invoice then flows to the School’s invoice
+coordinator/SLIPS who ensures it is sent to the right school/person.
+
+If you are the right recipient but the supplier has done something wrong, e.g. that the amount
+does not correspond to what was agreed, contact the supplier and ask them to send a credit
+note and issue a new invoice with the correct amount. Then select park [parkera] and write a
+comment, e.g. “awaiting credit note from supplier”. When the credit note arrives, indicate
+which debit note it relates to in the comment field and approve both the debit and credit notes
+at the same time. These are joined and no payment is made.
+
+Alternative four – Forward
+If you have incorrectly received the invoice as an approver, but you know who is meant to approve it,
+click on forward [vidarebefordra]. Select a name from the drop down list of whom you want to
+forward it to and write a comment. Click on forward once more. Note that it is only possible to forward
+it within your school; if the invoice is to be moved to another school, click on incorrect invoice [felaktig
+faktura] and leave a comment as instructed above.
+
+Forwarding means that one more person shall handle the invoice before it can flow to the next stage. If
+you can verify the invoice/purchase and only want to inform someone, it is better to approve it and
+inform them outside the system rather than using the forward function.
+
+Alternative five – Park
+If you want to wait with the invoice payment for some reason, e.g. await correct delivery or a credit
+note, select the function park [parkera]. The invoice then stays on your task list until a new action is
+selected. A comment must be left, which makes the process easier for both you and the School’s invoice
+coordinator/SLIPS.
+
+
+
+
+                                                                                                      12 (23)
+2.3   Financial approval in the system
+When you have invoices that are pending for financial approval, the same applies as for approval. The
+task icon at the top right is lit and shows the number of invoices to process. Click on the icon and select
+financial approval [ekonomisk attest] to open the image Approve supplier’s invoice [Attest
+leverantörsfaktura].
+
+
+
+
+For information on the different parts of the Approve supplier’s invoice view, see information in
+Section 2.2 Approval in the system.
+
+As financial approver, you must check the invoice. Check that the amount is correct and that the
+approver has specified the correct project to pay the invoice. Note that if the invoice relates to
+travel/representation expenses that you have personally participated in, or a purchase that you will use
+
+                                                                                                      13 (23)
+yourselves, select Escalate [Eskalera]. The invoice will then be sent to the person appointed as your
+supervisor.
+
+2.3.1    Different action alternatives for a financial approver.
+
+Alternative one - The invoice is correct
+
+
+
+
+If the invoice is accurate and the expense is paid by the specified organisational unit and the project,
+click on Financial approval [Ekonomisk attest]. The invoice is then definitively posted and sent to the
+bank. There, it remains on payment watch for the specified due date.
+
+Alternative two - Escalate
+If the invoice relates to travel/representation expenses that you have personally participated in, or a
+purchase that you will use yourself (computer/mobile phone): select Escalate [Eskalera].
+
+
+
+
+Leave a comment explaining the escalation and click on Escalate. The invoice flows to your
+predetermined supervisor for financial approval.
+
+Alternative three - The invoice is incorrect
+If the invoice has the wrong project or is entirely incorrect, e.g. if it is to be paid by another school at
+KTH, select Back to bookkeeper [Åter ekonom] and write a comment.
+
+Alternative four - Park
+If there are ambiguities regarding payment of the invoice, e.g. you are awaiting a final check, you are to
+park the invoice and investigate the matter further. Select the Park [Parkera] button and leave a
+comment. The invoice then stays on your task list until a new action is performed.
+
+2.4     Append an attachment
+You can attach supporting documentation to an invoice both in conjunction with approval or
+afterwards. Attachments in PDF format are preferable as it is easiest to open these later on in the flow.
+Click on paperclip [gemet] at the top right of the screen.
+
+
+
+
+A new window opens to the left of the invoice.
+
+                                                                                                          14 (23)
+Select the attachments folder and click on Add document [Lägg till ett dokument].
+
+
+
+
+It is important that the correct folder is selected, otherwise the attachment takes over the invoice
+image. If you forget to select the attachment folder and add over the invoice image, the system will still
+move the attachment to the attachment folder within 1 hour. Click on Add existing document [Lägg till
+befintlig dokument]. Select Transfer [Överför] and locate your saved form/documentation that you
+want to attach. Click on Save [Spara].
+
+When the invoice has been approved and has continued to the bookkeeper step, the paperclip [gemet]
+is marked to inform that there are attachments to the invoice.
+
+2.5   Open attachment
+Click on the marked paperclip. If the attachment is in PDF format, it will open directly on the screen. If
+the attachment is in some other format, the image will appear as indicated below. If the attachment is
+not visible, change the document view by clicking on one of the symbols
+
+
+
+
+                                                                                                     15 (23)
+To open the attachment, hover on the attachments line and select print.
+
+
+
+
+Depending on the web settings, the document will either be saved or opened directly in Word/Excel.
+
+2.6   Activate a replacement
+When you are absent for a long period and know that you will not be able to process invoices, you must
+activate a replacement. The replacement will have the same permissions as you, so it is therefore
+important to inform the replacement of your powers and any expected incoming invoices. When the
+replacement is activated, this person will see the same things as you, and both of you will receive e-
+mails indicating that there are invoices to process. To activate a replacement, go to Menu [Meny] and
+Your employment [Din anställning], and click on Activate replacement [Aktivera ersättare]. The
+following window will open.
+
+
+
+
+If there is a replacement registered in the system, this is visible here. Otherwise, contact the School’s
+invoice coordinator/SLIPS. In the example below, there is a replacement.
+
+
+
+
+                                                                                                      16 (23)
+To activate, do the following steps.
+    1. Fill in the absence dates, from and to
+    2. Also change the absence status to I am not in the office at the moment [Jag är inte på
+        kontoret just nu]
+    3. Save
+
+When your replacement is activated, the following image will be visible when you are to approve
+invoices; the information indicates that your replacement also has access to process your invoices.
+
+
+
+
+In the same way, you will receive information when you are the replacement for someone else. If you
+are a replacement for someone else, this is also indicated in the coding line.
+
+
+
+
+Settings for permissions in several schools
+Certain approvers have authority in several schools, and each school is called a company. If you have
+this and want to see how many invoices you have to process in each company, you can do so under
+tasks [uppgifter]; select Group [Gruppera]:
+
+
+
+
+                                                                                                      17 (23)
+Then select Company [Företag] and a folder per process step and school is created
+
+
+
+
+2.7   Find invoice
+Select Menu [Meny] which you find at the top left of the page, and click on reports [rapporter]. Under
+Globala rapporter/Elektroniska fakturahantering/Frågemallar, you will find a number of questions
+that will seek out invoices in different ways.
+
+
+
+
+                                                                                                  18 (23)
+Log workflow supp.inv. 1 – Own and processed
+Click on Log workflow supp.inv. 1 - Own and processed [Logg arbetsflöde levfakt 1- Egna och
+åtgärdade]; in this screen you can filter on a variety of parameters, such as period or supplier number.
+Your username is already filled in.
+
+
+
+
+Add filters from Status workflow, periods or supplier numbers [Status arbetsflöde, perioder eller
+leverantörsnummer], click on Search [Sök] to start the search. You will then see a list of all the invoices
+you have processed.
+
+Click on the Ver. no. to zoom in on the invoice image and then on completed [Avslutad] to check the
+workflow.
+
+
+
+
+                                                                                                     19 (23)
+Invoice image
+
+
+
+
+Workflow
+Hold the cursor over an event to see detailed information such as time indication, project number, etc.
+
+
+
+
+                                                                                                   20 (23)
+Log workflow supp.inv. 2 – Processed on behalf of others
+In the menu, you can find the request template Log workflow supp.inv. 2 – Processed on behalf of
+others [Logg arbetsflöde levfakt 2 – Åtgärdade åt andra], select filters here and click on browse
+[bläddra] to search. This is where invoices are listed where you have filled in for another approver.
+
+
+
+
+Request workflow supp. inv. – General
+The menu also contains the request template Request workflow supp. inv. – General [Fråga
+arbetsflöde levfakt – Generell] where you can search for invoices regardless of whether you have
+processed them yourself, acted as a replacement, had a replacement or none of the above. As before,
+you can select filters based on a number of parameters, such as voucher number or project. The report
+can filter for invoices in the EFH flow and for invoices that have completed the flow, selections are
+made in Active [Aktiv] and History [Hist.]
+
+
+
+
+If the invoice is in the workflow, you can see who it is with and at what stage. If the invoice has gone
+through the entire workflow, it is coded as completed. In order to see the invoice image, click on
+Ver.nr.
+
+
+                                                                                                      21 (23)
+Request online invoices – Account breakdown
+This request gives you an overview of the invoices paid by an organisational unit or project. Please note
+that only the costs generated by an invoice are displayed. Other costs or costs that have been redirected
+from another project will not be shown in the report.
+
+You can select filters based on period, org. unit and/project. The filters search for invoices that have
+already been recorded, i.e. which have completed the workflow. To include invoices that are still in the
+work flow, tick box A Non-recorded items [Ej bokförda poster].
+
+
+
+
+The result shows invoice costs per account. If you wish to view the invoice that generated the cost, click
+on the plus sign to expand the list and see the vouchers. Then click on the voucher number to view the
+invoice.
+
+
+
+
+                                                                                                     22 (23)
+2.8    Contact details
+To contact SLIPS/invoice coordinator at the KTH schools, use the email addresses for the following
+functions:
+
+School of ABE – ekonomi@abe.kth.se
+
+School of CBH – faktura@cbh.kth.se
+
+School of EECS – invoice@eecs.kth.se
+
+School of ITM – ekonomistab@itm.kth.se
+
+School of SCI – akvariet@kth.se
+
+School of VS – fakturaservice@kth.se
+
+
+
+
+                                                                                                 23 (23)
+
