@@ -65,6 +65,39 @@ Read (pure curl, paginated, cron-friendly):
   syllabus <id>               Course syllabus_body (HTML).
   raw <path> [--paginate]     Passthrough, e.g. raw '/courses/63758/quizzes'.
 
+Teach (read-only views of the people + work in a course):
+  roster <id> [--teachers|--tas|--role <t>]
+                              Enrolled people with name + email (students by
+                              default). GET /courses/:id/users.
+  students <id>               Alias for `roster <id>` (students only).
+  todo [<id>]                 Your grading / to-do queue — what needs your
+                              attention, across all courses or one course.
+                              GET /users/self/todo (or /courses/:id/todo).
+  gradebook <id>              Per-assignment dashboard: due date, points, and
+                              how many submissions still need grading.
+  grades <id>                 Class grade overview — current/final score per
+                              student (GET /courses/:id/enrollments + grades).
+  student <id> <studentId>    One student's enrolment + grade in the course.
+  submissions <id> <assignmentId>
+                              Per-student submission status for one assignment
+                              (submitted / unsubmitted / graded + score).
+  sections <id>               Course sections with their student counts.
+  groups <id>                 Student groups + group categories (project teams).
+
+Course structure (the things you set up to teach):
+  assignment <id> <assignmentId>
+                              Full detail of one assignment.
+  quizzes <id>                Quizzes in the course.
+  quiz <id> <quizId>          One quiz (detail). Questions: raw
+                              '/courses/<id>/quizzes/<quizId>/questions'.
+  discussions <id>            Discussion topics (non-announcement).
+  discussion <id> <topicId>   Full discussion thread incl. every reply.
+  calendar <id>               Calendar events / scheduled items for the course.
+
+Inbox (Canvas Conversations — read-only):
+  inbox                       Your conversations (message threads).
+  message <conversationId>    One conversation incl. all messages.
+
 Export:
   dump <id> [--out DIR]       Walk the whole course and write a tree of
                               Markdown files (default ./canvas-dump/course-<id>/).
@@ -231,6 +264,99 @@ cmd_raw() {
   if [ "${2:-}" = "--paginate" ]; then api_paginate "$1"; else api "$1"; fi
 }
 
+# ── teacher views (read-only) ───────────────────────────────────────
+# roster: who is in the course. Defaults to students; --teachers / --tas /
+# --role <CanvasRole> switch the enrollment_type. email + enrollments are
+# included so the caller gets contact info and section/role in one shot.
+cmd_roster() {
+  need_course "${1:-}" roster; local cid="$1"; shift
+  local etype="student"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --teachers) etype="teacher"; shift ;;
+      --tas|--ta)  etype="ta"; shift ;;
+      --role)     etype="${2:?--role needs a type}"; shift 2 ;;
+      *) echo "kth canvas roster: unknown arg '$1'" >&2; exit 2 ;;
+    esac
+  done
+  api_paginate "/courses/$cid/users?enrollment_type[]=$etype&include[]=email&include[]=enrollments"
+}
+
+# todo: the teacher's grading / to-do queue. No course id = across all
+# courses (GET /users/self/todo); with a course id = scoped to it.
+cmd_todo() {
+  if [ -n "${1:-}" ]; then api_paginate "/courses/$1/todo"; else api_paginate "/users/self/todo"; fi
+}
+
+# gradebook: per-assignment dashboard — due date, points, and the
+# needs_grading_count so a teacher sees at a glance what is outstanding.
+cmd_gradebook() {
+  need_course "${1:-}" gradebook
+  api_paginate "/courses/$1/assignments?include[]=needs_grading_count&include[]=all_dates"
+}
+
+# submissions: per-student submission status for one assignment. include
+# user so names/emails are inline; the caller can bucket by workflow_state
+# (submitted / unsubmitted / graded) and missing/late flags.
+cmd_submissions() {
+  need_course "${1:-}" submissions
+  [ -n "${2:-}" ] || { echo "kth canvas submissions: missing <assignmentId>" >&2; exit 2; }
+  api_paginate "/courses/$1/assignments/$2/submissions?include[]=user"
+}
+
+# grades: class grade overview — every student's current/final score, drawn
+# from their enrolment. The fastest "how is the class doing?" read.
+cmd_grades() {
+  need_course "${1:-}" grades
+  api_paginate "/courses/$1/enrollments?type[]=StudentEnrollment&state[]=active&include[]=grades"
+}
+
+# student: one learner's enrolment + grade in a course. Pair with
+# `submissions`/`raw` for their per-assignment detail.
+cmd_student() {
+  need_course "${1:-}" student
+  [ -n "${2:-}" ] || { echo "kth canvas student: missing <studentId>" >&2; exit 2; }
+  api_paginate "/courses/$1/enrollments?user_id=$2&include[]=grades"
+}
+
+cmd_sections() { need_course "${1:-}" sections; api_paginate "/courses/$1/sections?include[]=total_students&include[]=students"; }
+cmd_groups()   { need_course "${1:-}" groups;   api_paginate "/courses/$1/groups?include[]=group_category"; }
+
+# assignment: full detail of one assignment (description, rubric, dates).
+cmd_assignment() {
+  need_course "${1:-}" assignment
+  [ -n "${2:-}" ] || { echo "kth canvas assignment: missing <assignmentId>" >&2; exit 2; }
+  api "/courses/$1/assignments/$2?include[]=overrides&include[]=submission"
+}
+
+cmd_quizzes() { need_course "${1:-}" quizzes; api_paginate "/courses/$1/quizzes"; }
+cmd_quiz() {
+  need_course "${1:-}" quiz
+  [ -n "${2:-}" ] || { echo "kth canvas quiz: missing <quizId>" >&2; exit 2; }
+  api "/courses/$1/quizzes/$2"
+}
+
+cmd_discussions() { need_course "${1:-}" discussions; api_paginate "/courses/$1/discussion_topics"; }
+# discussion: the full thread (topic + every reply), via the /view endpoint.
+cmd_discussion() {
+  need_course "${1:-}" discussion
+  [ -n "${2:-}" ] || { echo "kth canvas discussion: missing <topicId>" >&2; exit 2; }
+  api "/courses/$1/discussion_topics/$2/view"
+}
+
+cmd_calendar() {
+  need_course "${1:-}" calendar
+  api_paginate "/calendar_events?context_codes[]=course_$1&all_events=true&type=event"
+}
+
+# inbox / message: Canvas Conversations (read-only). Composing or replying is
+# an outward-facing send — drafted by the agent, sent by the user in browser.
+cmd_inbox()   { api_paginate "/conversations"; }
+cmd_message() {
+  [ -n "${1:-}" ] || { echo "kth canvas message: missing <conversationId>" >&2; exit 2; }
+  api "/conversations/$1"
+}
+
 # ── dump: whole course → markdown tree ──────────────────────────────
 cmd_dump() {
   need_course "${1:-}" dump
@@ -251,13 +377,15 @@ cmd_dump() {
   # Gather everything once, hand the JSON to a single python pass that
   # writes the markdown tree. Page bodies are fetched individually because
   # the page index doesn't include the body.
-  local course modules assignments announcements files pages_index
+  local course modules assignments announcements files pages_index discussions quizzes
   echo "[kth-canvas]  · course meta"      >&2; course="$(api "/courses/$cid?include[]=syllabus_body&include[]=term&include[]=course_image")"
   echo "[kth-canvas]  · modules"          >&2; modules="$(api_paginate "/courses/$cid/modules?include[]=items&include[]=content_details" 2>/dev/null || echo '[]')"
   echo "[kth-canvas]  · assignments"      >&2; assignments="$(api_paginate "/courses/$cid/assignments" 2>/dev/null || echo '[]')"
   echo "[kth-canvas]  · announcements"    >&2; announcements="$(api_paginate "/courses/$cid/discussion_topics?only_announcements=true" 2>/dev/null || echo '[]')"
   echo "[kth-canvas]  · files"            >&2; files="$(api_paginate "/courses/$cid/files" 2>/dev/null || echo '[]')"
   echo "[kth-canvas]  · page index"       >&2; pages_index="$(api_paginate "/courses/$cid/pages?sort=title" 2>/dev/null || echo '[]')"
+  echo "[kth-canvas]  · discussions"      >&2; discussions="$(api_paginate "/courses/$cid/discussion_topics" 2>/dev/null || echo '[]')"
+  echo "[kth-canvas]  · quizzes"          >&2; quizzes="$(api_paginate "/courses/$cid/quizzes" 2>/dev/null || echo '[]')"
 
   # Fetch each wiki page body. Build a JSON array of full page objects.
   local pages_full="[]"
@@ -283,12 +411,13 @@ print("\n".join(p.get("url","") for p in d if p.get("url")))')"
 
   # Hand off to the markdown writer.
   CANVAS_BASE="$BASE" OUT_DIR="$out" COURSE_ID="$cid" python3 - \
-    "$course" "$modules" "$assignments" "$announcements" "$files" "$pages_full" <<'PYDUMP'
+    "$course" "$modules" "$assignments" "$announcements" "$files" "$pages_full" \
+    "$discussions" "$quizzes" <<'PYDUMP'
 import json, os, re, sys
 from html.parser import HTMLParser
 
-course, modules, assignments, announcements, files, pages = (
-    json.loads(a) if a else None for a in sys.argv[1:7])
+course, modules, assignments, announcements, files, pages, discussions, quizzes = (
+    json.loads(a) if a else None for a in sys.argv[1:9])
 out = os.environ["OUT_DIR"]
 cid = os.environ["COURSE_ID"]
 web_base = os.environ["CANVAS_BASE"].replace("/api/v1", "")
@@ -385,6 +514,8 @@ md.append("- `pages/` — all wiki pages")
 md.append("- `modules/` — module structure with item links")
 md.append("- `assignments/` — assignment descriptions")
 md.append("- `announcements/` — announcements")
+md.append("- `discussions/` — discussion topics (prompts)")
+md.append("- `quizzes.md` — quiz index")
 md.append("- `files.md` — file manifest with download URLs\n")
 
 # ── syllabus ─────────────────────────────────────────────────────────
@@ -451,6 +582,32 @@ for an in (announcements or []):
     meta=f"> Posted {an.get('posted_at') or an.get('created_at','?')}\n\n"
     written.append(write(f"announcements/{slug(title)}.md", f"# {title}\n\n{meta}{body}"))
 
+# ── discussions (topic prompts; skip ones already dumped as announcements) ─
+ann_ids={a.get("id") for a in (announcements or [])}
+disc=[d for d in (discussions or []) if d.get("id") not in ann_ids and not d.get("is_announcement")]
+for d in disc:
+    title=d.get("title","Discussion")
+    body=html2md(d.get("message",""))
+    meta=f"> Discussion topic · posted {d.get('posted_at') or d.get('created_at','?')}"
+    if d.get("html_url"): meta+=f" · [Open in Canvas]({d['html_url']})"
+    written.append(write(f"discussions/{slug(title)}-{d.get('id','x')}.md", f"# {title}\n\n{meta}\n\n{body}"))
+if disc:
+    md.append(f"\n_{len(disc)} discussion topic(s) in `discussions/`._")
+
+# ── quizzes index ────────────────────────────────────────────────────
+if quizzes:
+    ql=["# Quizzes\n", f"{len(quizzes)} quiz(zes).\n"]
+    for q in quizzes:
+        bits=[]
+        if q.get("due_at"): bits.append(f"due {q['due_at']}")
+        if q.get("points_possible") is not None: bits.append(f"{q['points_possible']} pts")
+        if q.get("question_count") is not None: bits.append(f"{q['question_count']} Q")
+        suffix=f" — {', '.join(bits)}" if bits else ""
+        link=f"  \n  {q.get('html_url','')}" if q.get("html_url") else ""
+        ql.append(f"- **{q.get('title','Untitled')}**{suffix}{link}")
+    written.append(write("quizzes.md","\n".join(ql)+"\n"))
+    md.append(f"\n_{len(quizzes)} quizzes catalogued in `quizzes.md`._")
+
 # ── files manifest ───────────────────────────────────────────────────
 if files:
     fl=["# Files\n", f"{len(files)} file(s). Download URLs are token-scoped Canvas links.\n"]
@@ -466,7 +623,7 @@ write("README.md","\n".join(md)+"\n")
 print(f"Wrote {len(written)+1} markdown files to {out}/")
 print(f"  pages: {len(pages or [])}  modules: {len(modules or [])}  "
       f"assignments: {len(assignments or [])}  announcements: {len(announcements or [])}  "
-      f"files: {len(files or [])}")
+      f"discussions: {len(disc)}  quizzes: {len(quizzes or [])}  files: {len(files or [])}")
 PYDUMP
 }
 
@@ -486,6 +643,23 @@ case "$cmd" in
   announcements) cmd_announcements "$@" ;;
   files)         cmd_files "$@" ;;
   syllabus)      cmd_syllabus "$@" ;;
+  roster)        cmd_roster "$@" ;;
+  students)      cmd_roster "$@" ;;
+  todo)          cmd_todo "$@" ;;
+  gradebook)     cmd_gradebook "$@" ;;
+  grades)        cmd_grades "$@" ;;
+  student)       cmd_student "$@" ;;
+  submissions)   cmd_submissions "$@" ;;
+  sections)      cmd_sections "$@" ;;
+  groups)        cmd_groups "$@" ;;
+  assignment)    cmd_assignment "$@" ;;
+  quizzes)       cmd_quizzes "$@" ;;
+  quiz)          cmd_quiz "$@" ;;
+  discussions)   cmd_discussions "$@" ;;
+  discussion)    cmd_discussion "$@" ;;
+  calendar)      cmd_calendar "$@" ;;
+  inbox)         cmd_inbox "$@" ;;
+  message)       cmd_message "$@" ;;
   raw)           cmd_raw "$@" ;;
   dump)          cmd_dump "$@" ;;
   help|-h|--help) usage ;;

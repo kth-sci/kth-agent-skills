@@ -1,6 +1,6 @@
 ---
 name: kth-canvas
-description: Read and export content from KTH Canvas (https://canvas.kth.se), the Instructure-based learning-management system, via the `kth canvas` CLI. Use when the user wants to list their Canvas courses, inspect a course's modules / pages / assignments / announcements / files, dump an entire course to local Markdown, or asks about "Canvas", "canvas.kth.se", "LMS", "course material", "kursrum", a Canvas course URL like https://canvas.kth.se/courses/63758, or wants a Canvas API access token captured. Backed by the Canvas REST API (https://canvas.kth.se/api/v1) with a personal Bearer access token; reads are pure curl. Prerequisite: load the main `kth` skill first only if you also need an interactive SSO session — Canvas reads themselves need only the token.
+description: Read and export content from KTH Canvas (https://canvas.kth.se), the Instructure-based learning-management system, via the `kth canvas` CLI. Use when the user wants to list their Canvas courses, inspect a course's modules / pages / assignments / announcements / files, see the class roster, check their grading queue / what needs grading, view per-assignment submission status (who has / hasn't handed in), dump an entire course to local Markdown, or asks about "Canvas", "canvas.kth.se", "LMS", "course material", "kursrum", a Canvas course URL like https://canvas.kth.se/courses/63758, or wants a Canvas API access token captured. Backed by the Canvas REST API (https://canvas.kth.se/api/v1) with a personal Bearer access token; reads are pure curl. Prerequisite: load the main `kth` skill first only if you also need an interactive SSO session — Canvas reads themselves need only the token.
 license: Proprietary — internal automation for one user
 compatibility: Reads use a personal Canvas access token (pure curl, no browser at runtime). Capturing the token uses the Claude Chrome extension (claude-in-chrome MCP) once, at https://canvas.kth.se/profile/settings. Designed for Claude Code on macOS / Linux.
 metadata:
@@ -132,6 +132,59 @@ kth canvas syllabus 63758       # raw syllabus_body HTML
 kth canvas page 63758 <page-url>     # page-url is the slug from `pages`, e.g. "lecture-1"
 ```
 
+### Teaching views — the people and work in a course (read-only)
+These cover the day-to-day teacher questions that go beyond course content.
+```bash
+# People & grades
+kth canvas roster 63758              # students with name + email
+kth canvas roster 63758 --teachers   # co-teachers / examiners (also --tas, --role <t>)
+kth canvas grades 63758              # class grade overview (current/final score per student)
+kth canvas student 63758 141366      # one student's enrolment + grade
+kth canvas sections 63758            # sections + student counts
+kth canvas groups 63758              # student groups / project teams
+
+# Grading queue & submissions
+kth canvas todo                      # your grading queue across ALL courses
+kth canvas todo 63758                # grading queue for one course
+kth canvas gradebook 63758           # per-assignment: due date, points, # needing grading
+kth canvas submissions 63758 381751  # per-student status for one assignment
+
+# Course structure
+kth canvas assignment 63758 381751   # full detail of one assignment
+kth canvas quizzes 63758             # quizzes; quiz 63758 <quizId> for one
+kth canvas discussions 63758         # discussion topics
+kth canvas discussion 63758 553676   # one full thread incl. every reply
+kth canvas calendar 63758            # scheduled events for the course
+
+# Inbox (Canvas Conversations — read-only)
+kth canvas inbox                     # your message threads
+kth canvas message 1578956           # one conversation incl. all messages
+```
+- **`todo`** answers "what needs my attention?" — each item carries
+  `needs_grading_count`, the assignment, and the course. The fastest
+  cross-course triage a teacher has.
+- **`gradebook`** is the assignment dashboard; **`grades`** is the student
+  dashboard (one score per learner). Combine `gradebook` with `roster` to see
+  who is missing, or `submissions <assignmentId>` to drill into one task.
+- **`submissions`** rows carry `workflow_state` (`unsubmitted` / `submitted` /
+  `graded`), `submitted_at`, `late`, `missing`, `score`, and the inline `user`
+  — enough to answer "who hasn't handed in X?" without opening Canvas.
+- **`discussion`** returns the `/view` payload — the topic plus every threaded
+  reply — so the agent can read what students actually posted.
+- **`inbox` / `message`** are read-only views of Canvas Conversations.
+  *Sending* a message is an outward-facing action: the agent drafts it, the
+  user sends it in the browser.
+
+### What the AI adds on top of these reads
+The reads above are the raw material; the agent's value is reasoning over them:
+- **"Summarise / ask questions about my course"** → `kth canvas dump <id>` to
+  Markdown, then the agent reads and answers (course outline, what's due when,
+  find a topic across pages).
+- **"Draft an announcement / a reminder email to students who haven't
+  submitted"** → the agent drafts the text from `submissions` + `roster`; the
+  **user posts it in the browser**. Composing is fine; the final send/publish
+  is the irreversible step and stays a human click (see below).
+
 ### "Run an endpoint I don't have a verb for"
 ```bash
 kth canvas raw '/courses/63758/quizzes'
@@ -176,6 +229,24 @@ if the user wants the actual PDFs.
 | `GET /courses/:id/assignments` | `assignments`, `dump` |
 | `GET /courses/:id/discussion_topics?only_announcements=true` | `announcements`, `dump` |
 | `GET /courses/:id/files` | `files`, `dump` |
+| `GET /courses/:id/users?enrollment_type[]=…&include[]=email&include[]=enrollments` | `roster`, `students` |
+| `GET /users/self/todo` · `GET /courses/:id/todo` | `todo` |
+| `GET /courses/:id/assignments?include[]=needs_grading_count&include[]=all_dates` | `gradebook` |
+| `GET /courses/:id/assignments/:aid/submissions?include[]=user` | `submissions` |
+| `GET /courses/:id/enrollments?type[]=StudentEnrollment&include[]=grades` | `grades`, `student` |
+| `GET /courses/:id/sections?include[]=total_students` | `sections` |
+| `GET /courses/:id/groups?include[]=group_category` | `groups` |
+| `GET /courses/:id/assignments/:aid?include[]=overrides` | `assignment` |
+| `GET /courses/:id/quizzes` · `GET /courses/:id/quizzes/:qid` | `quizzes`, `quiz` |
+| `GET /courses/:id/discussion_topics` · `…/:tid/view` | `discussions`, `discussion` |
+| `GET /calendar_events?context_codes[]=course_:id` | `calendar` |
+| `GET /conversations` · `GET /conversations/:id` | `inbox`, `message` |
+
+`dump` additionally pulls discussion topics and the quiz index alongside
+pages/modules/assignments/announcements/files.
+
+Not exposed (KTH disables it): `…/analytics/student_summaries` returns 404 on
+this instance — analytics is off. Use `grades` + `submissions` instead.
 
 All require `Authorization: Bearer <token>`. Canvas paginates with the
 `Link` header (`rel="next"`), max `per_page=100`.

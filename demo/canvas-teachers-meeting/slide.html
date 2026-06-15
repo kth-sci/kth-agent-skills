@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canvas, in plain English — KTH AI Agent Skill</title>
+<style>
+  :root{
+    --kth:#004791; --kth2:#0d6efd; --ink:#0b1f33; --muted:#5b6b7b;
+    --bg:#eef3f8; --card:#ffffff; --good:#1a7f4b; --warn:#b6471f; --line:#dbe6f0;
+    --chip:#eaf2fb; --chipln:#cfe2f5;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Arial,sans-serif;
+    background:radial-gradient(1100px 650px at 82% -12%,#d6e8f8,transparent),
+               radial-gradient(900px 600px at -5% 110%,#e3f0e9,transparent),var(--bg);
+    color:var(--ink); display:flex; align-items:center; justify-content:center;
+    padding:2.5vh 2.5vw; -webkit-font-smoothing:antialiased;
+  }
+  .slide{
+    width:min(1240px,97vw); aspect-ratio:16/9; background:var(--card);
+    border-radius:24px; box-shadow:0 34px 80px rgba(4,40,80,.20);
+    border:1px solid var(--line); overflow:hidden; display:flex; flex-direction:column;
+  }
+  header{
+    background:linear-gradient(120deg,var(--kth),#0a63b8 60%,#0d6ec4);
+    color:#fff; padding:22px 38px 20px; display:flex; align-items:center; gap:18px;
+  }
+  .logo{font-weight:800;letter-spacing:.5px;font-size:14px;background:rgba(255,255,255,.16);
+    padding:7px 12px;border-radius:9px;white-space:nowrap}
+  header h1{font-size:33px;margin:0;line-height:1.05;font-weight:800}
+  header p{margin:5px 0 0;font-size:15.5px;opacity:.93}
+  .stat{margin-left:auto;text-align:right;line-height:1}
+  .stat b{font-size:38px;font-weight:800;display:block}
+  .stat span{font-size:12px;opacity:.9;letter-spacing:.4px}
+
+  .body{display:grid;grid-template-columns:1.02fr 1fr;flex:1;min-height:0}
+  .left{padding:20px 26px 18px;display:flex;flex-direction:column;gap:13px;border-right:1px solid var(--line)}
+  .right{padding:18px 26px;display:flex;flex-direction:column;gap:11px;background:#f7fafd}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:1.3px;color:var(--kth);margin:0 0 2px;font-weight:800}
+
+  .term{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    background:#0a1c2e;color:#e9f2fb;border-radius:13px;padding:13px 15px;font-size:13px;
+    line-height:1.46;box-shadow:inset 0 0 0 1px #16324d;flex:1;min-height:0}
+  .term .you{color:#7fd1ff}
+  .term .out{color:#cfe0ee}
+  .term .hl{color:#ffd479;font-weight:700}
+  .term .ok{color:#8ee6a8}
+  .prompt{color:#5fa8e0}
+  .term .row{margin-bottom:9px}
+
+  .principle{display:flex;gap:11px;align-items:flex-start;
+    background:#fff6ef;border:1px solid #f3d6c4;border-radius:12px;padding:11px 13px}
+  .principle .dot{font-size:17px;line-height:1}
+  .principle b{color:var(--warn)}
+  .principle span{font-size:12.5px;color:#6a4a38;line-height:1.42}
+
+  /* capability map */
+  .cap{display:flex;flex-direction:column;gap:9px}
+  .grp{border:1px solid var(--line);border-radius:12px;padding:9px 11px;background:#fff}
+  .grp h3{margin:0 0 6px;font-size:12.5px;color:var(--ink);display:flex;align-items:center;gap:7px}
+  .grp h3 .e{font-size:15px}
+  .grp h3 small{color:var(--muted);font-weight:500;font-size:11px;margin-left:auto}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .c{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;background:var(--chip);
+    color:var(--kth);border:1px solid var(--chipln);border-radius:999px;padding:3px 9px;font-weight:600}
+
+  footer{padding:9px 38px;background:#f0f5fa;border-top:1px solid var(--line);
+    display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted)}
+  footer code{background:#e3eef9;color:var(--kth);padding:2px 7px;border-radius:6px;font-weight:700}
+  footer .pill{background:var(--good);color:#fff;border-radius:8px;padding:4px 11px;font-weight:700}
+</style>
+</head>
+<body>
+  <div class="slide">
+    <header>
+      <span class="logo">KTH · AI Agent Skills</span>
+      <div>
+        <h1>Canvas, in plain English</h1>
+        <p>Ask an AI agent about your teaching — it reads canvas.kth.se for you, in seconds.</p>
+      </div>
+      <div class="stat"><b>20+</b><span>READ COMMANDS · 0 RISKY WRITES</span></div>
+    </header>
+
+    <div class="body">
+      <div class="left">
+        <h2>One conversation, your whole teaching day</h2>
+        <div class="term">
+          <div class="row"><span class="you"><span class="prompt">you ▸</span> What do I need to grade across all my courses?</span><br>
+            <span class="out">→ <span class="hl">59</span> submissions waiting in <span class="hl">BB103X</span>, 1 in SK2538.</span></div>
+          <div class="row"><span class="you"><span class="prompt">you ▸</span> Who's enrolled in SI1410, and how's the class doing?</span><br>
+            <span class="out">→ <span class="hl">6 students</span> (Estelle, Alice, Garance…); grades not</span><br>
+            <span class="out">&nbsp;&nbsp;&nbsp;posted yet — first quiz due Aug 28.</span></div>
+          <div class="row"><span class="you"><span class="prompt">you ▸</span> Summarise the course &amp; what students discussed.</span><br>
+            <span class="out">→ Read 103 pages + 7 discussion threads… here's</span><br>
+            <span class="out">&nbsp;&nbsp;&nbsp;the outline and the questions students keep asking.</span></div>
+          <div class="row"><span class="you"><span class="prompt">you ▸</span> Any unanswered student messages in my inbox?</span><br>
+            <span class="out">→ 2 threads; the one about <span class="hl">team 5's session</span> has no reply.</span></div>
+          <div class="row"><span class="you"><span class="prompt">you ▸</span> Draft a reminder to anyone who hasn't submitted.</span><br>
+            <span class="out">→ Drafted ✅ &nbsp;<span class="ok">You review &amp; press send in Canvas.</span> ✋</span></div>
+          <div class="row" style="opacity:.6"><span class="prompt">you ▸</span> <span style="border-left:7px solid #5fa8e0;animation:blink 1s steps(1) infinite">&nbsp;</span></div>
+        </div>
+        <style>@keyframes blink{50%{border-color:transparent}}</style>
+        <div class="principle">
+          <span class="dot">🛡️</span>
+          <span><b>Reads only.</b> Posting grades, announcements, emails — every
+          irreversible action is <b>drafted by the AI, clicked by you</b>.
+          Your password &amp; MFA never leave your browser.</span>
+        </div>
+      </div>
+
+      <div class="right">
+        <h2>Covers the whole teaching workflow</h2>
+        <div class="cap">
+          <div class="grp">
+            <h3><span class="e">🧑‍🤝‍🧑</span> People &amp; grades <small>who, and how they're doing</small></h3>
+            <div class="chips"><span class="c">roster</span><span class="c">grades</span><span class="c">student</span><span class="c">sections</span><span class="c">groups</span></div>
+          </div>
+          <div class="grp">
+            <h3><span class="e">✅</span> Grading queue <small>what needs you, everywhere</small></h3>
+            <div class="chips"><span class="c">todo</span><span class="c">gradebook</span><span class="c">submissions</span></div>
+          </div>
+          <div class="grp">
+            <h3><span class="e">📚</span> Course content <small>set-up &amp; materials</small></h3>
+            <div class="chips"><span class="c">modules</span><span class="c">pages</span><span class="c">assignments</span><span class="c">quizzes</span><span class="c">discussions</span><span class="c">files</span><span class="c">calendar</span></div>
+          </div>
+          <div class="grp">
+            <h3><span class="e">💬</span> Inbox &amp; export <small>communicate · feed the AI</small></h3>
+            <div class="chips"><span class="c">inbox</span><span class="c">message</span><span class="c">announcements</span><span class="c">dump → Markdown</span></div>
+          </div>
+        </div>
+        <div class="principle" style="background:#eef7f1;border-color:#cfe8d8">
+          <span class="dot">🧩</span>
+          <span style="color:#2c5740">Not a product — an open <b style="color:var(--good)">skill</b>:
+          a transparent recipe over Canvas's own API that any KTH teacher can
+          read, trust, and adapt.</span>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <span>Built as a KTH Agent Skill · <code>kth canvas …</code> · Canvas REST API + personal access token</span>
+      <span class="pill">▶ 3-min live demo</span>
+    </footer>
+  </div>
+</body>
+</html>
