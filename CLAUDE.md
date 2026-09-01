@@ -23,13 +23,21 @@ the human-facing walkthrough.
 > 3. **AI agents make mistakes.** Every action this repo performs needs
 >    to be verified by the user — especially anything irreversible
 >    (purchase orders, invoice approvals, payments, sent emails).
-> 4. The agent **must never** auto-submit money-moving actions. The
->    architecture forbids it: see the
+> 4. The agent may perform a money-moving / irreversible submit (invoice
+>    attest, purchase, payment, sent email) **only with the user's
+>    explicit, per-action consent given in the same session** — never on
+>    standing, blanket, or unattended authorization, and never carried
+>    over from a previous invoice or session. This is a *soft* consent
+>    gate, not a hard prohibition: with fresh consent the agent may click;
+>    without it, it stops and the user clicks. See the
 >    `feedback-irreversible-writes-stay-in-browser` memory.
 >
 > When you (the agent) act in this repo, surface this disclaimer to the
 > user if they're about to do anything they haven't done before — and
-> always pause for confirmation before any final submit / approve click.
+> always obtain explicit per-action consent before any final submit /
+> approve click. For payment-release actions (e.g. **Ekonomisk attest**),
+> re-state the supplier + amount and get a fresh yes for that specific
+> invoice before clicking.
 
 ## Architecture
 
@@ -124,10 +132,14 @@ The Chrome extension's `javascript_tool` is the workhorse; `computer`
    first time you encounter a service, use `computer` to explore. Then
    write a `javascript_tool` script that automates it. Never do
    screenshot→click loops for repeated operations.
-2. **Irreversible writes stay with the user.** The agent prepares the
-   form/state but the user clicks the final submit button (Slutför,
-   Ekonomisk attest, Skicka in). The agent **must never** auto-submit
-   money-moving actions.
+2. **Irreversible writes are consent-gated, not agent-owned.** The agent
+   prepares the form/state and, for any final submit (Slutför, Ekonomisk
+   attest, Skicka in), may click **only after the user gives explicit,
+   per-action consent in the same session**. Consent is never standing,
+   blanket, or unattended, and never carries from one invoice/session to
+   the next. Without fresh consent the agent stops and the user clicks.
+   For payment-release submits, re-state supplier + amount and get a
+   fresh yes for that specific invoice first.
 3. **Never commit user config or credentials.** Bearer tokens, cookies,
    API keys, and `~/.config/kth-cli/` live outside the repo.
 4. **Update memory when you learn something architectural** about a

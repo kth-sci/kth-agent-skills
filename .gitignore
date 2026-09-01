@@ -21,3 +21,4 @@ config.env
 # Python bytecode
 __pycache__/
 *.pyc
+reimbursement-work/
