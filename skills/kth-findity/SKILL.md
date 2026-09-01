@@ -258,32 +258,77 @@ kth-findity-process --dry-run    # show what would change without doing it
 | Account code | `a37dc604fcf34714872f220cbf38258f` | 662 (example: Licensavgifter) |
 | Other | `f4a055d884204fb08912d97d625367ba` | (empty default) |
 
-Custom fields auto-fill from the user's profile defaults on every new
-upload — the `kth-findity-process` script does NOT need to set them.
+> **Correction (2026-09):** custom fields are **NOT** auto-filled on the
+> API `POST /expenses` path — a POST without `verification.customFields`
+> is rejected 400 `REQUIRED_FIELD`. Copy the exact `customFields` array
+> from an existing expense in the target report. (The SPA fills them for
+> you; the API does not.) The account code (`a37dc604…`) is a **constant
+> KTH code, independent of the category** — the same value is used across
+> Licensavgifter, Verksamhetsmaterial, Kurs & konferens, etc.
 
 ### Category IDs
 
-| Category | ID |
-| -------- | -- |
-| Licensavgifter / Licence fees | `3399ebe6bed14e4491a901e3c6f77cf7` |
+The full org category list (48 categories, not ~3) is at:
+```
+GET /api/v1/expense/me/organizations/{orgId}/expensetypes/ReceiptVerification/categories?max=100
+```
+Each entry has `id` + `name` (Swedish/English) but **no account code**.
+The OCR scan step (`PUT content/{id}?action=scan`) returns suggested
+`categoryIds` — its top suggestion is usually correct. Key ones:
 
-(Full org category list at `GET /api/v1/expense/me/organizations/{orgId}/expensetypes`
-— but the org seems to expose only ~3 categories total; Licensavgifter
-covers all SaaS subscriptions in the curated submission.)
+| Category | ID | Use for |
+| -------- | -- | ------- |
+| Licensavgifter / Licence fees | `3399ebe6bed14e4491a901e3c6f77cf7` | SaaS subscriptions, domains |
+| Verksamhetsmaterial / Consumable durable goods | `7c076ac1fd964b25a305b8bac545fc20` | hardware / devices |
+| Kurs- & konferens / Course & conference | `1697791c5bb244b7ae318d2741668697` | courses, conferences |
+
+## Reports: create, split, submit (discovered 2026-09)
+
+The full write surface for reports is known — use it **only with the
+user's explicit, per-action consent in the same session** (see the
+irreversible-writes principle; `?action=send` is the money-moving submit).
+
+| Operation | Call |
+| --------- | ---- |
+| Create report | `POST /expensereports` `{organizationId,name,comment,reimbursementCurrency:"SEK",type:"MANUAL",customFields:[…]}` |
+| Rename / edit report | `PUT /expensereports/{id}` (same shape). Comment goes in the **top-level `comment`** — a comment *customField* 400s "failed to handle request". |
+| Delete report | `DELETE /expensereports/{id}?organizationId=` → 204 |
+| Move an expense between reports | `PUT /expenses/{id}` with full body + changed `expenseReportId` |
+| **Submit ("send in")** | `PUT /expensereports/{id}?action=send&organizationId=…` with **NO body** (a body → 400). DRAFT → **PROCESSING** on success. |
+| Download a stored receipt | `GET https://hogia.findity.com/api/resources/{receiptAttachment.id}` → the PDF |
+
+**Report creation REQUIRES two report-level custom fields** (both BLOCKER
+if missing): Syfte/Purpose (`9f2272662e9245b786f238a7fedded62`, e.g.
+"Forskning/Research") and unit (`bfeede0fc8f0449f81801491b521cc70`, e.g. "SCI").
+
+**Per-report record limit ≈ 15–22 (small!).** A report of 15 submits; 23 is
+rejected with BLOCKER `MAXIMUM_NUMBER_OF_EXPENSE_RECORDS_EXCEEDED`. **Only the
+actual submit enforces it** — the `?include=validationErrors` field on a GET
+is stale after edits and cannot be trusted. Size reports to **≤15** and verify
+by submitting. To split a large report: create new reports, move expenses via
+`PUT expenseReportId`, then submit each.
+
+**Duplicate guard:** creating/editing an expense with the same amount +
+purchaseDate as an existing one → 400 `EXPENSE_ALREADY_EXIST_SIMILAR_CONTENT`
+(a WARNING with **no API override**; changing the description does not help).
+Genuinely distinct same-day/same-amount charges must be added via the SPA's
+"save anyway"; once both exist neither can be PUT-edited via the API — keep
+them in one report and leave them untouched.
+
+**Bearer capture (simplest):** read it in-page from
+`JSON.parse(sessionStorage.getItem('auth')).accessToken` (128-char opaque,
+~1h). Re-read to refresh when a call returns 401.
 
 ## Known limits / future work
 
-- **Write actions are not implemented**. No `kth findity submit`,
-  `kth findity create-report`, `kth findity add-receipt`. These would
-  POST to `/api/v1/expense/expensereports` and
-  `/api/v1/expense/expenses` — the endpoints are visible in network
-  traces when you create one by hand. Capture them via HAR before
-  wrapping. Per the irreversible-writes-stay-in-browser principle,
-  **submit-for-approval** should always stay manual.
-- **Bearer extraction depends on HAR capture**. The Flutter app
-  doesn't expose its token in plain localStorage; we sniff it from
-  the request's Authorization header. If Findity changes the request
-  shape, the regex in `capture_bearer()` needs to track it.
+- **Write actions are not yet wrapped in the CLI** (no `kth findity
+  submit / create-report / add-receipt`), but the raw endpoints are all
+  documented above under *Reports* and the upload flow — they can be
+  driven directly with curl / `javascript_tool`. Submit-for-approval
+  (`?action=send`) is a money-mover: run it **only with the user's fresh,
+  per-action, in-session consent**, never unattended.
+- **Bearer**: read in-page from `sessionStorage.auth.accessToken` (see
+  *Reports* above) — no HAR/interceptor needed. Re-read on 401.
 - **Email auto-derivation may be wrong**. If `KTH_USER_EMAIL` is not
   set, the wrapper falls back to `${KTH_USER_ID}@kth.se`. For users
   whose Findity account uses `firstname.lastname@kth.se` rather than

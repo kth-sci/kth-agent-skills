@@ -267,10 +267,13 @@ in the live browser via the Chrome extension.
    - *Felaktig faktura* — reject as incorrect
    - *Eskalera* — escalate to supervisor
 
-3. **For money-moving actions** (Ekonomisk attest): the agent prepares
-   the screen (verifies Proj column, amount, adds comments if needed)
-   and then **stops**. The user must click the final button themselves.
-   The agent NEVER auto-submits an approval.
+3. **For money-moving actions** (Ekonomisk attest — payment release): the
+   agent prepares the screen (verifies Proj column, amount, adds comments
+   if needed), then **re-states the supplier + amount and asks for fresh,
+   explicit consent for that specific invoice**. The agent may click the
+   final button **only after** the user says yes to that invoice. Consent
+   is per-invoice and never carries over; no standing or unattended
+   approval.
 
 4. **For reversible actions** (Parkera, add comment): the agent can
    fill forms via `javascript_tool` or `form_input`, but should still
@@ -280,18 +283,25 @@ in the live browser via the Chrome extension.
    **requires a comment from the user** before it is approved. The agent
    must, for each invoice in the queue: (a) read the `Faktura.htm` and
    summarize what the invoice is for, (b) draft a proposed comment
-   describing it, (c) **present that draft and wait for the user to
-   confirm or edit the comment**, and only then (d) let the user click
-   the Sakattestera button. Never approve a Sakattestera item without a
-   user-supplied/confirmed comment. The final Sakattestera click stays
-   with the user.
+   describing it, (c) **present that draft and get the user to confirm or
+   edit the comment**, and only then (d) — with the user's explicit
+   per-invoice consent — set the Proj and click Sakattestera. Never
+   approve a Sakattestera item without a user-confirmed comment **and**
+   explicit consent for that item. Consent does not carry to the next
+   invoice.
+
+This is a **soft consent gate**: the agent is permitted to click the
+final attest button, but only on fresh, explicit, per-action human
+consent given in the same session — never blanket, standing, or
+unattended. Without consent the agent stages everything and the user
+clicks.
 
 ### Available write verbs (all via Chrome extension)
 
 | Action | Effect | Final click |
 | ------ | ------ | ----------- |
-| Ekonomisk attest | Approve the invoice | **User** (money-moving) |
-| Sakattestera | Factual approval (goods received) | **User**, and only after a user-confirmed comment per item |
+| Ekonomisk attest | Approve the invoice (payment release) | Agent may click **only after fresh per-invoice consent** (supplier + amount re-stated) |
+| Sakattestera | Factual approval (goods received) | Agent may click **after a user-confirmed comment + explicit per-item consent** |
 | Parkera | Park with reason | Agent fills, user confirms |
 | Kommentar | Add workflow comment | Agent fills, user confirms |
 | Set Proj | Update project code | Agent fills, user confirms |
@@ -399,6 +409,14 @@ in [references/project-accounts.yaml](references/project-accounts.yaml).
 When proposing a `Proj` value, evaluate the rules in order — first
 match wins — and fall through to the `default` if nothing matches.
 
+For **how to classify an invoice** (read the godsmärke, map line items to
+a funding rule, write a short Swedish comment, and the Sakattestera
+screen flow), see the accumulated heuristics in
+[references/invoice-classification-heuristics.md](references/invoice-classification-heuristics.md).
+Use them to make a confident first suggestion instead of asking from
+scratch; only ask the user when two funding rules could plausibly apply
+(e.g. a laptop coded to a specific person's fellowship vs. lab hardware).
+
 ## Known limitations / future work
 
 - **Drilling into one invoice via API is incomplete.** The endpoint
@@ -429,15 +447,19 @@ When an invoice has been found, present it as:
 5. **Decision options** — Approve, Split, Park, Reject, Escalate — each
    listed with what the user would do in the Chrome extension.
 
-The agent never auto-confirms an approval. Always stops before the
-final money-moving click.
+The agent never auto-confirms an approval on its own. It clicks the
+final attest button only after fresh, explicit, per-invoice consent —
+see the soft consent gate in "Workflow for write actions".
 
 ## What this skill should never do
 
-- **Approve / reject / pay** any invoice on the user's behalf, even
-  if the user previously said it was OK for a similar invoice. Each
-  approval is a separate authorization. Always stop and let the user
-  click the final button in the browser.
+- **Approve / reject / pay an invoice without fresh per-invoice consent.**
+  The agent may click the final attest button, but only after the user
+  gives explicit consent for *that specific invoice* in the same session.
+  Consent for one invoice never authorizes another, and consent never
+  carries across sessions. No blanket, standing, or unattended approval.
+  For payment-release (Ekonomisk attest), re-state supplier + amount and
+  get a fresh yes first.
 - **Hardcode `client=UF` or `user=WEIO`** in scripts — use
   `kth efh session` to discover them.
 - **Cache or commit** `~/.config/kth-cli/.cookies-agrprod.txt`.
@@ -445,11 +467,10 @@ final money-moving click.
 - **Auto-set Proj or auto-write comments** without showing the user
   the proposal first. The right pattern is "suggest, then user
   confirms".
-- **Approve a Sakattestera item without a user-confirmed comment.**
-  Every Sakattestera invoice requires a comment from the user before
-  approval: summarize what the invoice is, draft a comment, get the
-  user to confirm/edit it, and only then let the user click
-  Sakattestera. No comment → no approval.
+- **Approve a Sakattestera item without a user-confirmed comment AND
+  explicit consent.** Every Sakattestera invoice requires a comment the
+  user has confirmed/edited, plus explicit per-item consent, before the
+  agent clicks Sakattestera. No comment or no consent → no approval.
 
 ## Recommended agent flow for the user
 
