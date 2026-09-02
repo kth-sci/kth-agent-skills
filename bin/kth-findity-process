@@ -25,26 +25,19 @@ BEARER_PATH      = os.path.expanduser("~/.config/chrome-agent/.findity-bearer.tx
 BASE             = "https://hogia.findity.com"
 
 # ── Vendor → description template + amount-tolerance ──────────────────
-# These templates intentionally stay general (per user's instruction
-# "keep general so it won't go wrong"). The receipt PDF itself is the
-# source of truth; the description tells the reviewer what the receipt
-# is and what it's for.
+# Templates stay general and carry no user-specific details. The receipt PDF
+# itself is the source of truth; the description just tells the reviewer what
+# the receipt is and what it's for. Set KTH_EXPENSE_PURPOSE_TEXT in
+# ~/.config/kth-cli/config.env (or the environment) to your own wording.
+PURPOSE = os.environ.get("KTH_EXPENSE_PURPOSE_TEXT", "research use at KTH")
 VENDOR_TEMPLATES = {
-    "Matomo":      "Matomo website analytics subscription ({date_human}) — "
-                   "used to monitor research-website traffic for AICell Lab "
-                   "AI agent research.",
-    "Anthropic":   "Anthropic Claude API/Max-plan subscription ({date_human}) — "
-                   "used for AI agent research and development at AICell Lab.",
-    "OpenAI":      "OpenAI ChatGPT Plus / API usage credit ({date_human}) — "
-                   "used for LLM-powered AI agent experiments and prompt "
-                   "engineering research at AICell Lab.",
-    "Slack":       "Slack Pro plan for AICell Lab workspace ({date_human}) — "
-                   "used for research-team collaboration on AI agent development.",
-    "Cloudflare":  "Cloudflare hosting/security service ({date_human}) — "
-                   "used for AICell Lab research-project websites.",
-    "GoogleCloud": "Google Cloud Platform usage ({date_human}) — "
-                   "used for AI agent infrastructure and experiments at AICell Lab.",
-    "Gandi":       "Domain renewal ({date_human}) — AICell Lab research-project domain.",
+    "Matomo":      "Matomo website analytics subscription ({date_human}) — {purpose}.",
+    "Anthropic":   "Anthropic Claude API/Max-plan subscription ({date_human}) — {purpose}.",
+    "OpenAI":      "OpenAI ChatGPT Plus / API usage credit ({date_human}) — {purpose}.",
+    "Slack":       "Slack subscription ({date_human}) — {purpose}.",
+    "Cloudflare":  "Cloudflare hosting/infrastructure service ({date_human}) — {purpose}.",
+    "GoogleCloud": "Google Cloud Platform usage ({date_human}) — {purpose}.",
+    "Gandi":       "Domain renewal ({date_human}) — {purpose}.",
 }
 
 # ── HTTP helpers ──────────────────────────────────────────────────────
@@ -115,11 +108,11 @@ def make_description(receipt, exp):
     template = VENDOR_TEMPLATES.get(vendor)
     if not template:
         # Fallback for unknown vendors
-        template = "{vendor} ({date_human}) — for AICell Lab research at KTH."
-        return template.format(vendor=vendor, date_human=receipt["date"])
+        template = "{vendor} ({date_human}) — {purpose}."
+        return template.format(vendor=vendor, date_human=receipt["date"], purpose=PURPOSE)
     date_obj = datetime.strptime(receipt["date"], "%Y-%m-%d")
     date_human = date_obj.strftime("%B %Y")  # "June 2024"
-    return template.format(date_human=date_human)
+    return template.format(date_human=date_human, purpose=PURPOSE)
 
 # ── Process a single expense ──────────────────────────────────────────
 def process_expense(exp, report_id, manifest, dry_run=False):

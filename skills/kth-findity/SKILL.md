@@ -228,10 +228,11 @@ Polls Findity for unattached DRAFT expenses, matches each against the
 local submission manifest (`~/.cache/kth-receipts/staged-submission-*/files.json`)
 by `date + amount`, and PUTs:
 - `verification.description` ← vendor-specific template (Matomo, OpenAI,
-  Anthropic, Slack, Cloudflare, GoogleCloud, Gandi). Stays general per
-  user preference: "X service ({Month YYYY}) — used for AICell Lab AI
-  agent research at KTH."
-- `expenseReportId` ← target report (default: "Web, Compute & AI Services").
+  Anthropic, Slack, Cloudflare, GoogleCloud, Gandi). Keep it short and generic,
+  e.g. `"<Vendor> <service> ({Month YYYY}) — <purpose> at KTH"` (mind the
+  description length cap, below).
+- `expenseReportId` ← the user's target report (resolve it fresh by name — see
+  the report-id lesson below).
 
 Run:
 ```bash
@@ -242,21 +243,21 @@ kth-findity-process --dry-run    # show what would change without doing it
 
 ### KTH-Expense custom-field IDs (example values)
 
-> **Note:** The field-definition IDs below are org-wide (shared by all
-> users in the same Findity organisation), but the **values** are
-> specific to the original author's KTH unit and project. You must
-> discover your own values via `kth findity raw
-> '/api/v1/expense/me/organizations/{orgId}/expensetypes'` or by
-> inspecting an expense you created manually in the Findity SPA.
+> **Note:** The field-definition IDs below are org-wide (shared by all users in
+> the same Findity organisation); the **values** are per-user (your project,
+> unit and account codes) and are NOT included here. Discover your own values
+> for a given expense by reading an existing expense you created in the SPA:
+> `GET /api/v1/expense/expenses?organizationId={orgId}&include=verification`
+> and copy its `verification.customFields` array verbatim onto new expenses.
 
-| Field | Field-definition ID | Example value |
-| ----- | ------------------- | ------------- |
-| Project number (projektnr) | `3b51138dcfa54fe590767611513081cc` | 89256 (example: KAW DDLS Fellows) |
-| Sub-project / activity | `3c7f808b155142d08a75bb6fcb995ed5` | (empty default) |
-| Unit / dept code | `4ba9eade2e884fff95988938dffd6839` | SKE (example: Biofysik) |
-| Cost type? | `9d429eb0c1b6428aa9724b96f657e664` | (empty default) |
-| Account code | `a37dc604fcf34714872f220cbf38258f` | 662 (example: Licensavgifter) |
-| Other | `f4a055d884204fb08912d97d625367ba` | (empty default) |
+| Field | Field-definition ID | Value |
+| ----- | ------------------- | ----- |
+| Project number (projektnr) | `3b51138dcfa54fe590767611513081cc` | `<your project no.>` |
+| Sub-project / activity | `3c7f808b155142d08a75bb6fcb995ed5` | (often empty) |
+| Unit / dept code | `4ba9eade2e884fff95988938dffd6839` | `<your unit code>` |
+| Cost type | `9d429eb0c1b6428aa9724b96f657e664` | (often empty) |
+| Account code (konto) | `a37dc604fcf34714872f220cbf38258f` | `<your account code>` |
+| Other | `f4a055d884204fb08912d97d625367ba` | (often empty) |
 
 > **Correction (2026-09):** custom fields are **NOT** auto-filled on the
 > API `POST /expenses` path — a POST without `verification.customFields`
@@ -298,8 +299,10 @@ irreversible-writes principle; `?action=send` is the money-moving submit).
 | Download a stored receipt | `GET https://hogia.findity.com/api/resources/{receiptAttachment.id}` → the PDF |
 
 **Report creation REQUIRES two report-level custom fields** (both BLOCKER
-if missing): Syfte/Purpose (`9f2272662e9245b786f238a7fedded62`, e.g.
-"Forskning/Research") and unit (`bfeede0fc8f0449f81801491b521cc70`, e.g. "SCI").
+if missing): Syfte/Purpose (`9f2272662e9245b786f238a7fedded62`, one of Findity's
+standard values e.g. "Forskning/Research") and unit/school
+(`bfeede0fc8f0449f81801491b521cc70`, `<your unit/school code>`). Copy both
+values from one of the user's existing reports rather than hard-coding them.
 
 **Per-report record limit ≈ 15–22 (small!).** A report of 15 submits; 23 is
 rejected with BLOCKER `MAXIMUM_NUMBER_OF_EXPENSE_RECORDS_EXCEEDED`. **Only the

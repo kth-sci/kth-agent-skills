@@ -18,7 +18,7 @@ Usage:
 Options:
   --report-id ID     Target report (default: first DRAFT report found)
   --org-id ID        Findity organization ID (required; get from `kth findity organizations`)
-  --project VAL      Project number custom-field value (e.g. '89256')
+  --project VAL      Project number custom-field value (your projektnr)
   --unit VAL         Unit/dept code custom-field value (e.g. 'SKE')
   --account-code VAL Account code custom-field value (e.g. '662')
   --delay SECS       Delay between uploads (default: 3, to avoid rate limiting)
@@ -29,14 +29,19 @@ import argparse, json, os, sys, time, urllib.request, urllib.error
 
 BASE = "https://hogia.findity.com"
 
+# Free-text purpose appended to each line description. Set KTH_EXPENSE_PURPOSE_TEXT
+# in ~/.config/kth-cli/config.env (or the environment) to your own wording; the
+# default is generic so this ships with no user-specific details.
+PURPOSE = os.environ.get("KTH_EXPENSE_PURPOSE_TEXT", "research use at KTH")
+
 TEMPLATES = {
-    "Matomo":      "Matomo website analytics subscription ({date}) — used to monitor research-website traffic for AICell Lab AI agent research.",
-    "Anthropic":   "Anthropic Claude API/Max-plan subscription ({date}) — used for AI agent research and development at AICell Lab.",
-    "OpenAI":      "OpenAI ChatGPT Plus / API usage credit ({date}) — used for LLM-powered AI agent experiments at AICell Lab.",
-    "Slack":       "Slack Pro plan for AICell Lab workspace ({date}) — used for research-team collaboration on AI agent development.",
-    "Cloudflare":  "Cloudflare hosting/security service ({date}) — used for AICell Lab research-project websites.",
-    "GoogleCloud": "Google Cloud Platform usage ({date}) — used for AI agent infrastructure and experiments at AICell Lab.",
-    "Gandi":       "Domain renewal ({date}) — AICell Lab research-project domain.",
+    "Matomo":      "Matomo website analytics subscription ({date}) — {purpose}.",
+    "Anthropic":   "Anthropic Claude API/Max-plan subscription ({date}) — {purpose}.",
+    "OpenAI":      "OpenAI ChatGPT Plus / API usage credit ({date}) — {purpose}.",
+    "Slack":       "Slack subscription ({date}) — {purpose}.",
+    "Cloudflare":  "Cloudflare hosting/infrastructure service ({date}) — {purpose}.",
+    "GoogleCloud": "Google Cloud Platform usage ({date}) — {purpose}.",
+    "Gandi":       "Domain renewal ({date}) — {purpose}.",
 }
 
 def build_custom_fields(args):
@@ -119,8 +124,8 @@ def upload_one(receipt, bearer, org_id, report_id, custom_fields, dry_run=False)
     except Exception:
         date_human = date_str
 
-    desc = TEMPLATES.get(vendor, "{vendor} ({date}) — for AICell Lab research at KTH.").format(
-        date=date_human, vendor=vendor)
+    desc = TEMPLATES.get(vendor, "{vendor} ({date}) — {purpose}.").format(
+        date=date_human, vendor=vendor, purpose=PURPOSE)
 
     if dry_run:
         return True, f"[dry-run] {vendor} {date_str}: {desc[:60]}…"
@@ -174,7 +179,7 @@ def main():
     ap.add_argument("--bearer", required=True, help="Findity bearer token (128-char opaque string)")
     ap.add_argument("--report-id", default=None, help="Target report ID (default: first DRAFT report)")
     ap.add_argument("--org-id", required=True, help="Findity organization ID (get from `kth findity organizations`)")
-    ap.add_argument("--project", default=None, help="Project number custom-field value (e.g. '89256')")
+    ap.add_argument("--project", default=None, help="Project number custom-field value (your projektnr)")
     ap.add_argument("--project-field-id", default="3b51138dcfa54fe590767611513081cc",
                      help="Field-definition ID for project number")
     ap.add_argument("--unit", default=None, help="Unit/dept code custom-field value (e.g. 'SKE')")
