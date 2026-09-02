@@ -319,6 +319,80 @@ them in one report and leave them untouched.
 `JSON.parse(sessionStorage.getItem('auth')).accessToken` (128-char opaque,
 ~1h). Re-read to refresh when a call returns 401.
 
+### Why a report was returned (rejection reasons)
+
+When an admin returns a report, `processStatus` becomes **REJECTED** and the
+report becomes editable again (`canBeSentIn: true`). The admin's message is
+**not** on the report object and there is **no** `/comments` endpoint — it
+arrives as a **notification**:
+```
+GET /api/v1/expense/me/notifications?max=50
+```
+Each returned report yields an entry `{header:"Report returned by admin",
+body:"Your report <NAME> has been returned by the report admin with message: <TEXT>"}`.
+Parse `body` for the free-text reason. (The per-record `rejectComment` field
+exists but is usually empty — the real feedback is the notification body.)
+Admins often reference lines by **number** (1..N) in the report's display
+order (date ascending) — number the records the same way to map the feedback.
+
+To attach a better document to a line, upload it (`POST /content`) and `PUT
+/expenses/{id}` with the new `receiptAttachment.id`; the verification also has
+an `attachments` array for **additional** docs (e.g. invoice + payment
+confirmation on the same expense). Then re-submit (`?action=send`) with the
+user's fresh consent.
+
+### What counts as a VALID receipt (KTH admin rules — attach the RIGHT doc up front)
+
+A line is accepted only with a **formal invoice/receipt** that shows an
+**invoice/receipt number + VAT number + "Bill to"** AND **proof of payment**
+(the document says "paid on …" / "Amount paid", or a separate payment
+confirmation is attached). Charge-notification emails, order-status emails, and
+"your invoice is available" emails are **rejected**. Per vendor, the correct
+document is:
+
+| Vendor | ✅ Attach this | ❌ Rejected |
+| ------ | ------------- | ---------- |
+| **OpenAI API** | the formal receipt (has an `Invoice number`, OpenAI VAT id, Bill-to KTH) from platform.openai.com billing history | "Your OpenAI API account has been funded" email |
+| **OpenAI ChatGPT Plus** | the €18.40 invoice/receipt | — |
+| **Anthropic** | the **RECEIPT** (`_2` file — "Amount paid / paid on"), **not** the `_1` **Invoice** ("Amount due") | the `_1` invoice alone (admin: "does not show it is paid") |
+| **Cloudflare** | the real **invoice** PDF **+** the **"purchase confirmed"** email ("successfully charged $X to your card") as payment proof — merge both into one PDF (`pdfunite invoice.pdf confirmed.pdf out.pdf`) | "your invoice is available" email alone |
+| **Matomo (Paddle)** | Paddle's **full VAT invoice** (has Paddle IE VAT number) via the receipt's "Download/View invoice" or help@paddle.com | the plain "Your Matomo receipt" (VAT amount but no VAT number) |
+| **Google Cloud (GCP)** | invoice **+** payment confirmation from console → Billing → Documents ("Payments received" page) | "invoice is available" notice alone |
+| **Google Play (AI Plus/One)** | the Google Play **order receipt** email (accepted as-is) | — |
+| **Slack** | the plan-renewal **receipt** (`_1`) | — |
+| **Temu / physical goods** | the order receipt, claimed **net of any refund** (import-fee deposits are often refunded — claim the amount actually kept) | claiming the pre-refund order total |
+
+Where the invoice does not itself show "paid", either attach the payment
+confirmation as an **additional** doc (verification `attachments` array) or
+**merge** invoice+confirmation into one PDF and set it as `receiptAttachment`
+(the reliable path — `pdfunite a.pdf b.pdf out.pdf`; a screenshot works as
+proof too — `sips -s format pdf shot.png --out shot.pdf` then merge). Matomo
+VAT invoices and GCP payment confirmations are **not in email** — pull them
+from the vendor self-service portal (Paddle receipt page → Download invoice;
+GCP Billing console → Documents → "Payments received"). Tiny sub-cost lines
+that would cost more to document than they're worth: delete them (DELETE the
+expense) rather than chase proof.
+
+### Gotchas learned (this account, the hard way)
+
+- **Correction cycles are per-report and take rounds.** Fix a rejection, then
+  **re-verify every line by actually downloading `/api/resources/{id}` and
+  grepping the text** ("invoice number" / "amount paid" / "successfully
+  charged") before re-submitting — the Findity UI's green "complete" tick does
+  NOT mean the *right kind* of document is attached.
+- **`description` has a hard length cap** (~a couple hundred chars) → a PUT with
+  a long description fails 400 `DB_SCHEMA_VIOLATION "field has too many
+  characters"`. Keep line descriptions short.
+- **`INVALID_SEND_STATE "already being processed"`**: a report mid-send can't be
+  re-sent; re-GET its `processStatus` before retrying a submit (it probably
+  already went to PROCESSING).
+- **Token dies ~hourly and the browser bridge can vanish** (Navigator service is
+  session-scoped; a new day = Findity SSO expired → the app sits on the login
+  page and the user must re-login). Re-capture `sessionStorage.auth.accessToken`
+  after any 401; if the tab is on `/login/#/`, ask the user to sign in.
+- **Amounts:** claim **net of refunds** (Temu refunds the import-fee deposit) and
+  attach the refund proof; watch for admin "wrong amount?" notes.
+
 ## Known limits / future work
 
 - **Write actions are not yet wrapped in the CLI** (no `kth findity
