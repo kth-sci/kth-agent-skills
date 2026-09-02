@@ -385,7 +385,13 @@ expense) rather than chase proof.
   characters"`. Keep line descriptions short.
 - **`INVALID_SEND_STATE "already being processed"`**: a report mid-send can't be
   re-sent; re-GET its `processStatus` before retrying a submit (it probably
-  already went to PROCESSING).
+  already went to PROCESSING). **But first suspect a wrong report id** — see next.
+- **Never reuse a cached report id after any split/rename/move.** Splitting a
+  report reshuffles which id holds what, so a hard-coded id can point at a
+  different (already-PROCESSING) report and a submit then fails
+  `INVALID_SEND_STATE`. Always **resolve the target report freshly by
+  name + processStatus** (list `/expensereports?...&processStatus=REJECTED` and
+  pick by `name`) right before you edit or submit it.
 - **Token dies ~hourly and the browser bridge can vanish** (Navigator service is
   session-scoped; a new day = Findity SSO expired → the app sits on the login
   page and the user must re-login). Re-capture `sessionStorage.auth.accessToken`
