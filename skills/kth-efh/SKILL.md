@@ -417,6 +417,86 @@ Use them to make a confident first suggestion instead of asking from
 scratch; only ask the user when two funding rules could plausibly apply
 (e.g. a laptop coded to a specific person's fellowship vs. lab hardware).
 
+## Sakattestera: the working automation recipe (SOLVED 2026-11-17)
+
+Helpers: [`bin/kth-efh-sakattest.js`](../../bin/kth-efh-sakattest.js) — load with
+`myco nav eval <page> @bin/kth-efh-sakattest.js`. Read its header; it documents every trap.
+
+### ⚠ 1. There are TWO copies of the form. One is DEAD.
+
+| frame | role |
+| ----- | ---- |
+| `ContentContainer.aspx?...menu_id=AP278` | **the LIVE form — drive this** |
+| `CopyContainer.aspx` | a visual CLONE for the display pane — **inert** |
+
+`System/Scripts/copyContainer.js` replaces these with **empty functions** in the clone:
+`__doPostBack`, `setDirty`, `PostBack`, `HighlightTextBox`, `ResetTextBox`,
+`checkFocusAndDoPostBack`, `trapEnter`, `postBackOnEnter`.
+So in the clone **every postback silently does nothing**. Pick the frame by testing that
+`__doPostBack` is NOT `/^function\(\)\{\}$/` — never by "first document containing the field id"
+(that finds the clone first).
+
+### 2. The dimension fields are LOOKUPS, not text boxes
+
+`<datalistcontrol>` + hidden `_RowValue` / `_RowDescription` hold the real value; the visible
+`_Editor` is cosmetic and typed text is discarded. Row field ids:
+**123=Konto, 276=Proj, 281=Dim 7, 282=Momskod**. Org/dim_1 has **no input** — it is derived.
+
+**Backend search API** (from `ServersideLookup`; also visible in the browser network tab):
+
+```
+POST /agrprod/System/Services/DataListService.aspx
+Search=<term>&Context=<base64>&BatchStart=1&BatchSize=50
+→ <list><item><value>89256</value><descr>KAW DDLS fellows Wei(…)</descr></item>…</list>
+```
+
+`Context` = the `<datalistcontrol context="…">` attribute, base64 of
+`TFI004^<activity-guid>^AP278^UF^<fieldId>^n`. **The GUID rotates — re-read it from the DOM
+every time.** Use `dimSearch(fieldId, term)` to list valid values for any dimension.
+
+### 3. The sequence that actually commits
+
+Mirrors what a human does (user, 2026-11-17: *"I type the number, select from the list, then I
+click outside the box, something computes, and then it lets me submit"*):
+
+1. `setDim("276", "89256", "KAW DDLS fellows Wei(2301-2712/2020.0239)")`
+   — internally: `Popup.SetEditorValues(v, d)` → force `_IsDirty="true"` →
+   **`LeaveDataListControl(null, el)`** ← this blur is what makes the server recompute
+   **Org `VAX LEVSKULD EFH` → `SKEG Biofysik Ouyang`**
+2. wait ~15 s for the postback, then `checkState()` — require `error === ""` **and**
+   `orgLooksRight === true` before going on
+3. `setComment("…")` (sets the text **and** its `_IsDirty`)
+4. `sakattestera()` — finds the button by text (its id is not stable: `b$tbl_headbutt_10`/`_11`/…)
+5. verify with `taskCounts()` — the API is authoritative, the header badge goes stale
+
+### 4. Pitfalls that each cost hours
+
+- **Never change Konto.** The server reverts it *and* it breaks the Org derivation, giving
+  `Korrigera följande: Org: Värdet för fältet dim_1 = 'SKEG' är fast.` Konto stays
+  `5000 Ankomstregistrering EFH`; on Sakattestera you change **only Proj** (matches the on-screen
+  step 5 *"Fyll i projekt (byt ut dummyproj)"*).
+- **Never call `CheckIfControlIsDirty()` first** — it re-evaluates and **clears** `IsDirty`
+  (because `SetEditorValues` already synced Editor↔RowValue), so the server discards the change.
+- `PostBack(base)` alone sets the value but does **not** recompute Org. Use `LeaveDataListControl`.
+- `myco nav read` cannot see inside iframes, and `nav act type/key` needs a ref — so trusted
+  typing is not available; the widget-API route above is the way.
+- `myco nav shot` often times out on this page while `eval` keeps working.
+- The EFH session drops often — re-run `kth-login https://agrprodweb01.ug.kth.se/agrprod/`
+  and note it may report failure while actually having landed on the dashboard (verify the page).
+
+### 5. Verified project codes (query live with `dimSearch("276", …)`)
+
+| code | description |
+| ---- | ----------- |
+| 89256 | KAW DDLS fellows Wei (2301-2712/2020.0239) |
+| 89299 | GGS Wei (2317/2307-2712) |
+| 866513 | Biofysik/GEMENSAMMA KOSTN OUYANG |
+| 88314 | EU RI-SCALE 101188168 W. Ouyang |
+| 89481 | KAW DDLS WASP 2025:017 Ouyang |
+
+The consent rules in "What this skill should never do" are unchanged: a user-confirmed comment
+**and** explicit per-item consent before each `sakattestera()`.
+
 ## Known limitations / future work
 
 - **Drilling into one invoice via API is incomplete.** The endpoint
