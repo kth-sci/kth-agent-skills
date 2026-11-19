@@ -123,6 +123,7 @@ Load `kth-service-onboarding` and follow it to discover the new service.
 | purchasing, order, WISUM, bestalla, varukorg      | `kth-wisum`                |
 | Canvas, canvas.kth.se, LMS, course material, kursrum, a `/courses/<id>` URL | `kth-canvas` |
 | Prisma, VR, Vetenskapsrådet, grant application, research council, `prisma.research.se` | `kth-prisma` |
+| HR, KTH-HR, HR+, Visma, Medvind, Egenrapportering, payslip, absence, semester, VAB, föräldraledighet, `kth.hrplus.visma.se` | `kth-hr` |
 | agrprod, Inwise (specific URL: `agrprodweb01.ug.kth.se/agrprod/`) | `kth-efh`  |
 | any other KTH service URL the user pastes         | `kth-service-onboarding`   |
 

@@ -169,6 +169,7 @@ The Chrome extension's `javascript_tool` is the workhorse; `computer`
 | `https://www.wisum.its.umu.se/KTH/`         | wisum              | `kth-wisum`          | shipped    |
 | `https://canvas.kth.se/`                    | canvas (LMS)       | `kth-canvas`         | shipped    |
 | `https://prisma.research.se/`               | prisma (VR)        | `kth-prisma`         | shipped    |
+| `https://kth.hrplus.visma.se/`              | hr (Visma HR+/Medvind) | `kth-hr`        | shipped    |
 
 Update this table whenever a service skill is added.
 
