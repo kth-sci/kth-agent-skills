@@ -52,6 +52,10 @@ Testing. One browser, one session, one set of cookies.
 │  bin/                                                              │
 │   ├── kth-efh             Unit4 EFH e-invoice CLI (pure curl).     │
 │   ├── kth-efh-parse       EFH HTML parser + project router.        │
+│   ├── kth-efh-attest.sh   Code + Sakattestera ONE invoice, 1 run.  │
+│   ├── kth-efh-eval.sh     Run JS against the live EFH form.        │
+│   ├── kth-efh-prelude.js  Helpers injected by kth-efh-eval.sh.     │
+│   ├── kth-mfa-login.sh    Login + VERIFIED Authenticator approval. │
 │   ├── kth-wisum           KTH WISUM purchasing CLI (curl + JS).    │
 │   ├── kth-findity         Findity expense CLI (bearer + curl).     │
 │   ├── kth-findity-upload  Batch receipt upload (bearer + API).     │
