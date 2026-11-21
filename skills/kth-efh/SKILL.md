@@ -584,7 +584,7 @@ The consent rules in "What this skill should never do" are unchanged: a user-con
   all — once the UI has the invoice open, the document iframe's own URL carries the uuid:
 
   ```bash
-  kth-efh-eval.sh <page> 'pickInvoice("80476743")'   # wait ~9 s
+  kth-efh-eval.sh <page> 'pickInvoice("<vernr>")'    # wait ~9 s
   kth-efh-eval.sh <page> 'docText(currentDocUuid())' # the full PEPPOL invoice as text
   ```
 
