@@ -22,3 +22,15 @@ config.env
 __pycache__/
 *.pyc
 reimbursement-work/
+
+# Local agent-session artifacts (session ids, personal names, cart state) — public repo!
+.mycolab/
+.svamp/
+.research/
+notes/
+outputs/
+WISUM-PURCHASE-PROTOCOL.md
+.efh-session-notes.md
+
+# Symlink into the PRIVATE kth-auth repo — never ship a repo-relative broken link
+bin/kth-login

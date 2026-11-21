@@ -58,6 +58,40 @@ for discovery and interactive write actions.
 2. The cookie jar at `$KTH_EFH_COOKIE_JAR` (default:
    `~/.config/kth-cli/.cookies-agrprod.txt`) must be populated.
    See "Capturing cookies via Chrome extension" below.
+   **Only the `kth efh` CLI needs this.** For browser-driven work (which is all of
+   Sakattestera) skip the jar entirely — a synchronous XHR inside the warm page already
+   carries the cookies. See "Sakattestera" §0b.
+
+## Logging in (browser-driven work)
+
+Use [`bin/kth-mfa-login.sh`](../../bin/kth-mfa-login.sh):
+
+```bash
+kth-mfa-login.sh https://agrprodweb01.ug.kth.se/agrprod/ [page-id]
+```
+
+It navigates the page, reads the number-match digits **from the live login page**, approves
+in the registered Authenticator, and confirms by `location.host`. Usually it lands with no
+MFA at all, because the ADFS cookie outlives the Unit4 app session.
+
+⚠ **Do not use `kthmfa-approve <digits>` — it reports success while doing nothing.** On
+2026-11-21 it printed *"approval dialog detected — typing NN / digits typed, YES tapped"*
+three times in a row while the Authenticator number field stayed literally empty
+("Enter number here") and the YES button stayed disabled; the login page then timed out with
+*"We didn't receive a response."* The working sequence, which `kth-mfa-login.sh` implements:
+
+1. `am start -n com.azure.authenticator/.ui.LaunchActivity` — foreground the app.
+   **Never `adb shell input keyevent 4`** to clear a stale dialog: that sends Authenticator
+   to the home screen and the push dialog never renders again.
+2. `input tap 542 898` (number field) → `input text <digits>`
+3. **dump the UI and verify** `text="<digits>"` on `auth_enter_correct_num_text_input`
+   **and** `positiveButton enabled="true"` — this is the only real evidence a tap will count
+4. `input tap 881 1045` (YES)
+5. confirm by reading `location.host`, never by the tap returning
+
+The whole thing must fit inside the ~60 s challenge window, so it has to be one unbroken
+run. Also note `kth-login` is the wrong tool here: its `landed` check only recognises
+`wisum.its.umu.se` and it spins on an EFH target.
 
 ## Capturing cookies via Chrome extension
 
@@ -417,10 +451,46 @@ Use them to make a confident first suggestion instead of asking from
 scratch; only ask the user when two funding rules could plausibly apply
 (e.g. a laptop coded to a specific person's fellowship vs. lab hardware).
 
-## Sakattestera: the working automation recipe (SOLVED 2026-11-17)
+## Sakattestera: the working automation recipe (SOLVED 2026-11-17, batch-proven 2026-11-21)
 
-Helpers: [`bin/kth-efh-sakattest.js`](../../bin/kth-efh-sakattest.js) — load with
-`myco nav eval <page> @bin/kth-efh-sakattest.js`. Read its header; it documents every trap.
+### The tooling — use this, don't re-derive it
+
+| script | what it does |
+| ------ | ------------ |
+| [`bin/kth-efh-attest.sh`](../../bin/kth-efh-attest.sh) | **the one you want.** Codes and attests ONE invoice end to end: relogin → open queue → pick invoice → set Proj → verify → comment → attest → verify the count dropped. `--stage-only` stops before the click. |
+| [`bin/kth-efh-eval.sh`](../../bin/kth-efh-eval.sh) | run any expression against the live form: `kth-efh-eval.sh <page> 'state()'` |
+| [`bin/kth-efh-prelude.js`](../../bin/kth-efh-prelude.js) | the helpers it injects — `live`, `g()`, `api()`, `docText()`, `currentDocUuid()`, `openTaskList()`, `openQueue()`, `pickInvoice()`, `invoiceList()`, `state()`, `dimSearchSync()`, `setDim()`, `setComment()`, `sakattestera()`, `taskCounts()` |
+| [`bin/kth-mfa-login.sh`](../../bin/kth-mfa-login.sh) | login + **verified** MFA approval (see "Logging in" below) |
+| [`bin/kth-efh-sakattest.js`](../../bin/kth-efh-sakattest.js) | the original annotated writeup of the form mechanics — read its header before changing any helper |
+
+Proven on 2026-11-21: four invoices coded and attested, queue 4 → 0, one
+`kth-efh-attest.sh` run each.
+
+### ⚠ 0. Do a whole invoice in ONE process — the session dies in minutes
+
+The Unit4 **app** session expires after a few minutes idle, and it expires by **collapsing
+every frame to `Logout.aspx`**. A half-coded invoice is then simply gone and `state()` starts
+answering `no live frame`. It died twice between agent tool calls on 2026-11-21.
+
+So never spread one invoice across several agent tool calls. Drive it with
+`kth-efh-attest.sh`, which runs the whole sequence as one uninterrupted process.
+
+The SAML/ADFS cookie **outlives** the app session, so the relogin is usually silent (no MFA
+at all) — it is cheap, so always relogin rather than assuming the session is alive. And since
+every invoice is re-entered from the queue, a relogin mid-batch costs nothing.
+
+### ⚠ 0b. `myco nav eval` is synchronous-only
+
+Three constraints that shape every helper:
+
+- **No `await`.** A returned promise serialises to `{}`. Use synchronous
+  `XMLHttpRequest`, not `fetch()`.
+- **A top-level `var` makes the whole eval return `null`.** Wrap everything in a function.
+- **Globals do not persist between calls** — you cannot install helpers once. That is exactly
+  why `kth-efh-eval.sh` re-injects `kth-efh-prelude.js` on every call.
+
+A bonus: a synchronous XHR inside the warm page **reuses the browser's own cookies**, so for
+browser-driven work the `kth efh` curl cookie jar is unnecessary.
 
 ### ⚠ 1. There are TWO copies of the form. One is DEAD.
 
@@ -481,8 +551,11 @@ click outside the box, something computes, and then it lets me submit"*):
 - `myco nav read` cannot see inside iframes, and `nav act type/key` needs a ref — so trusted
   typing is not available; the widget-API route above is the way.
 - `myco nav shot` often times out on this page while `eval` keeps working.
-- The EFH session drops often — re-run `kth-login https://agrprodweb01.ug.kth.se/agrprod/`
-  and note it may report failure while actually having landed on the dashboard (verify the page).
+- **The Sakattestera button id really is unstable** — observed `b$tbl_headbutt_10` on the
+  first invoice of a batch and `b$tbl_headbutt_11` on the next three. Always find it by text.
+- The EFH session drops often — see §0. `bin/kth-mfa-login.sh` handles it; `kth-login` does
+  not (its `landed` state only recognises `wisum.its.umu.se`, so it spins on an EFH target).
+- å/ä/ö survive the `myco nav eval` channel intact, so comments can be written in real Swedish.
 
 ### 5. Verified project codes (query live with `dimSearch("276", …)`)
 
@@ -506,6 +579,17 @@ The consent rules in "What this skill should never do" are unchanged: a user-con
   context (the Unit4 UI sets up an `activityStepId` via `Container.aspx`
   before hitting this). Discovery must therefore go through the Chrome
   extension.
+
+  **You usually don't need it.** Reading an invoice does not require the discovery cache at
+  all — once the UI has the invoice open, the document iframe's own URL carries the uuid:
+
+  ```bash
+  kth-efh-eval.sh <page> 'pickInvoice("80476743")'   # wait ~9 s
+  kth-efh-eval.sh <page> 'docText(currentDocUuid())' # the full PEPPOL invoice as text
+  ```
+
+  That reads every line item, passenger, order reference and godsmärke in one call, with no
+  cache file, no cookie jar and no PDF download.
 - `kth efh url` is a best-effort URL builder; Unit4 may expect the
   query string in a slightly different shape for some views. Verify
   in the browser first.
@@ -554,17 +638,32 @@ see the soft consent gate in "Workflow for write actions".
 
 ## Recommended agent flow for the user
 
-When the user says "I have an EFH task to handle" or similar:
+When the user says "I have an EFH task to handle" / "what should I approve?":
 
-1. `kth efh count` — confirm there is something to do.
-2. `kth efh tasks` — see what categories are pending.
-3. Navigate to the EFH URL via Chrome extension:
-   ```
-   navigate: https://agrprodweb01.ug.kth.se/agrprod/
-   ```
-4. Use `read_page` / `find` to locate and click the task bell, then the
-   task row. Read the `Bilaga` (attachment) `1 - Faktura.htm` to
-   understand what the invoice is for. Summarize for the user.
-5. Match the invoice context to `references/project-accounts.yaml`
-   and propose: which project, a draft comment, which button to click.
-6. **Stop.** The user makes the actual click in the browser.
+```bash
+P=$(myco nav open https://agrprodweb01.ug.kth.se/agrprod/ --background --id)
+kth-mfa-login.sh https://agrprodweb01.ug.kth.se/agrprod/ "$P"
+kth-efh-eval.sh "$P" 'taskCounts()'                 # anything to do? which queue?
+kth-efh-eval.sh "$P" 'openTaskList()'; sleep 5
+kth-efh-eval.sh "$P" 'openQueue()';   sleep 10
+kth-efh-eval.sh "$P" 'invoiceList()'                # supplier / amount / due / vernr
+# per invoice: read what it is actually for
+kth-efh-eval.sh "$P" 'pickInvoice("<vernr>")'; sleep 9
+kth-efh-eval.sh "$P" 'docText(currentDocUuid())'
+```
+
+Then, for each invoice:
+
+1. **Summarize what it is for** from `docText` — line items, orderer reference, order number,
+   passenger + dates for travel. Flag anything that looks off against the header amount.
+2. **Propose a project** from `references/project-accounts.yaml`, and verify the code exists
+   with `dimSearchSync("276", "<code>")` rather than trusting the table.
+3. **Draft the comment** (Swedish). Travel needs **dates out and home, destination and
+   purpose** — if you don't know the purpose, ask; don't invent one.
+4. **Show the user** supplier, amount, project and the draft comment, and get their
+   explicit confirmation of the comment plus explicit consent for *that* invoice.
+5. Only then: `kth-efh-attest.sh "$P" <vernr> <proj> "<projDescr>" "<comment>"`
+   (or `--stage-only` if the user prefers to click it themselves).
+6. Report the `taskCounts()` before/after as the evidence it worked.
+
+Never batch step 4 away: consent is per invoice and never carries over.
